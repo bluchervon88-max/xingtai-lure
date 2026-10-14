@@ -188,6 +188,56 @@
     ]
   },
 
+  "closedSeason": {
+    "_说明": [
+      "河北省海河流域禁渔期判定契约。",
+      "规则：5月16日 — 7月31日（官方表述「5月16日12时—7月31日12时」）。",
+      "实现用「月*100+日」做整数区间比较，所以判定只看日期、不看时刻，",
+      "边界日整天都算禁渔期。",
+      "黑坑/养殖塘不受约束（人工水域不适用天然水域的禁渔规定）。",
+      "",
+      "★ 为什么这段要有契约：判错了有真实后果 —— 用户可能在禁渔期下竿。",
+      "  而且这是**跨年**逻辑（daysUntil 有 +1 年的分支），最容易写错。"
+    ],
+    "closedMonthFrom": 5,
+    "closedDayFrom": 16,
+    "closedMonthTo": 7,
+    "closedDayTo": 31,
+    "inSeason": [
+      { "id": "season_start_day", "date": "2026-05-16", "expect": true,
+        "desc": "起始日当天算禁渔期（区间闭区间）" },
+      { "id": "season_end_day", "date": "2026-07-31", "expect": true,
+        "desc": "结束日当天仍算禁渔期" },
+      { "id": "season_mid", "date": "2026-06-15", "expect": true,
+        "desc": "禁渔期中段" },
+      { "id": "day_before_start", "date": "2026-05-15", "expect": false,
+        "desc": "起始日前一天不算 —— 边界差一天就是合规问题" },
+      { "id": "day_after_end", "date": "2026-08-01", "expect": false,
+        "desc": "结束日次日不算" },
+      { "id": "winter", "date": "2026-12-31", "expect": false,
+        "desc": "冬季不在禁渔期" }
+    ],
+    "subjectTo": [
+      { "id": "reservoir_subject", "waterType": 1, "expect": true, "desc": "水库受约束" },
+      { "id": "river_subject", "waterType": 2, "expect": true, "desc": "河流受约束" },
+      { "id": "lake_subject", "waterType": 3, "expect": true, "desc": "湖泊受约束" },
+      { "id": "paypond_exempt", "waterType": 5, "expect": false,
+        "desc": "黑坑/收费塘不受约束（人工养殖水域）" },
+      { "id": "pond_exempt", "waterType": 4, "expect": false,
+        "desc": "池塘不受约束" }
+    ],
+    "daysUntil": [
+      { "id": "from_april_1", "date": "2026-04-01", "expect": 45,
+        "desc": "4月1日距5月16日还有 45 天" },
+      { "id": "cross_year", "date": "2025-12-31", "expect": 136,
+        "desc": "跨年：12月31日算到次年的5月16日。这是最容易写错的分支。" },
+      { "id": "during_season", "date": "2026-06-15", "expect": 0,
+        "desc": "已在禁渔期内返回 0" },
+      { "id": "after_season", "date": "2026-08-01", "expect": 288,
+        "desc": "禁渔期结束后要算到**次年**的 5月16日（2026-08-01 至 2027-05-16 = 288 天）" }
+    ]
+  },
+
   "theme": {
     "_说明": "两套配色的对比度下限。颜色值为 ARGB 十六进制。",
     "dark": {

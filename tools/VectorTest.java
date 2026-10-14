@@ -255,6 +255,12 @@ public class VectorTest {
         pass += mapResult.pass;
         fail += mapResult.fail;
 
+        // 禁渔期判定：判错会让用户在禁渔期下竿，是有合规后果的功能。
+        // 而且含跨年分支（8~12 月要算到次年 5 月 16 日），最容易漏。
+        VectorTestMap.Result seasonResult = VectorTestMap.runClosedSeason(v, v);
+        pass += seasonResult.pass;
+        fail += seasonResult.fail;
+
         System.out.println("\n================================");
         System.out.println("PASS=" + pass + "  FAIL=" + fail);
         if (fail > 0) {

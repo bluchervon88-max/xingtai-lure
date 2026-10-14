@@ -1,5 +1,7 @@
+import com.xtlure.app.model.FishingSpot;
 import com.xtlure.app.ui.GeoViewport;
 
+import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -161,5 +163,115 @@ final class VectorTestMap {
         }
 
         return r;
+    }
+
+    /**
+     * 禁渔期判定契约（Java 侧）。
+     *
+     * ★ 为什么这段必须有测试
+     *
+     *   判错的后果不是显示难看，而是**用户可能在禁渔期下竿** —— 这是合规问题。
+     *
+     *   而且这段逻辑有两个容易写错的地方：
+     *     1. 边界日：区间是闭区间（月*100+日 的整数比较），起始日和结束日
+     *        当天都算禁渔期。差一天就是"合法/违法"的区别。
+     *     2. 跨年：禁渔期是 5~7 月，所以在 8~12 月要算到**次年**的 5 月 16 日。
+     *        这个 +1 年的分支最容易漏，而漏了在禁渔期之外的大部分时间里都不会显形。
+     *
+     * @param v      契约读取器
+     * @param reader 用于取整数字段（waterType）
+     */
+    static Result runClosedSeason(VectorReader v, VectorReader reader) {
+        Result r = new Result();
+        System.out.println("\n=== 契约: closedSeason ===");
+
+        Map<String, Object> cs = v.section("closedSeason");
+        if (cs == null) {
+            check(r, "closedSeason 段存在", false, "契约文件里找不到这一段");
+            return r;
+        }
+
+        // ---- 日期区间判定
+        for (Map<String, Object> c : v.list("closedSeason", "inSeason")) {
+            String id = VectorReader.id(c);
+            String date = VectorReader.str(c, "date", "");
+            boolean want = VectorReader.bool(c, "expect", false);
+
+            Calendar cal = calendarOf(date);
+            if (cal == null) {
+                check(r, id + " 日期解析", false, "无法解析 '" + date + "'");
+                continue;
+            }
+            boolean got = FishingSpot.inClosedSeason(cal);
+            check(r, id, got == want,
+                    date + " -> " + got + "  期望 " + want);
+        }
+
+        // ---- 水域类型是否受约束（黑坑/池塘豁免）
+        for (Map<String, Object> c : v.list("closedSeason", "subjectTo")) {
+            String id = VectorReader.id(c);
+            int type = VectorReader.intVal(c, "waterType", -1);
+            boolean want = VectorReader.bool(c, "expect", false);
+
+            FishingSpot s = new FishingSpot();
+            s.setWaterType(type);
+            boolean got = s.subjectToClosedSeason();
+            check(r, id, got == want,
+                    "水域类型 " + type + " -> " + got + "  期望 " + want
+                            + (want ? "" : "（人工水域豁免）"));
+        }
+
+        // ---- 距禁渔期开始的天数
+        for (Map<String, Object> c : v.list("closedSeason", "daysUntil")) {
+            String id = VectorReader.id(c);
+            String date = VectorReader.str(c, "date", "");
+            int want = (int) VectorReader.num(c, "expect", -999);
+
+            Calendar cal = calendarOf(date);
+            if (cal == null) {
+                check(r, id + " 日期解析", false, "无法解析 '" + date + "'");
+                continue;
+            }
+            int got = FishingSpot.daysUntilClosedSeason(cal);
+            check(r, id, got == want,
+                    date + " -> " + got + " 天  期望 " + want);
+        }
+
+        // ---- 常量与官方文本
+        //
+        // 文本必须与官方通告一致。「一人一杆一线一钩」那种网上流传但**查不到
+        // 官方条文**的说法，早先版本引用过、后来撤掉了，这里锁住防止再被加回去。
+        check(r, "禁渔期起始常量",
+                FishingSpot.CLOSED_MONTH_FROM == 5 && FishingSpot.CLOSED_DAY_FROM == 16,
+                FishingSpot.CLOSED_MONTH_FROM + "月" + FishingSpot.CLOSED_DAY_FROM + "日");
+        check(r, "禁渔期结束常量",
+                FishingSpot.CLOSED_MONTH_TO == 7 && FishingSpot.CLOSED_DAY_TO == 31,
+                FishingSpot.CLOSED_MONTH_TO + "月" + FishingSpot.CLOSED_DAY_TO + "日");
+        check(r, "禁渔期文本与常量一致",
+                FishingSpot.CLOSED_SEASON_TEXT.contains("5月16日")
+                        && FishingSpot.CLOSED_SEASON_TEXT.contains("7月31日"),
+                FishingSpot.CLOSED_SEASON_TEXT);
+        check(r, "规则引用不含未经证实的说法",
+                !FishingSpot.CLOSED_SEASON_RULE.contains("一人一杆一线一钩"),
+                "官方条文里查不到「一人一杆一线一钩」，不应作为规定引用");
+
+        return r;
+    }
+
+    /**
+     * 由 "yyyy-MM-dd" 构造 Calendar。
+     *
+     * 刻意把时刻清零：判定只看日期，如果带上当前时刻，
+     * 在时区边界上可能把日期算成前后一天，导致跨时区的测试结果不一致。
+     */
+    private static Calendar calendarOf(String ymd) {
+        int[] p = VectorReader.parseDateTime(ymd);
+        if (p == null || p.length < 3) {
+            return null;
+        }
+        Calendar c = Calendar.getInstance();
+        c.clear();
+        c.set(p[0], p[1] - 1, p[2]);
+        return c;
     }
 }

@@ -136,6 +136,116 @@ func runMapProjectionContract(_ root: [String: Any], _ r: Runner) {
     }
 }
 
+/// 禁渔期判定契约（Swift 侧）。
+///
+/// ★ 为什么这段必须有测试
+///
+///   判错的后果不是显示难看，而是**用户可能在禁渔期下竿** —— 这是合规问题。
+///
+///   而且这段逻辑有两个容易写错的地方：
+///     1. 边界日：区间是闭区间（月*100+日 的整数比较），起始日和结束日
+///        当天都算禁渔期。差一天就是"合法/违法"的区别。
+///     2. 跨年：禁渔期在 5~7 月，所以 8~12 月要算到**次年**的 5 月 16 日。
+///        这个 +1 年的分支最容易漏，而漏了在禁渔期之外的大部分时间里不会显形。
+///
+///   与 Java 侧对应：`tools/VectorTestMap.java` 的 `runClosedSeason`。
+///   **改一边必须改另一边。**
+func runClosedSeasonContract(_ root: [String: Any], _ r: Runner) {
+    print("\n=== 契约: closedSeason ===")
+
+    guard let cs = Vec.section(root, "closedSeason") else {
+        r.check("closedSeason 段存在", false, "契约文件里找不到这一段")
+        return
+    }
+
+    // ---- 日期区间判定
+    for c in Vec.list(cs, "inSeason") {
+        let id = Vec.str(c, "id", "?")
+        let dateStr = Vec.str(c, "date", "")
+        let want = Vec.bool(c, "expect", false)
+
+        guard let d = dateOf(dateStr) else {
+            r.check(id + " 日期解析", false, "无法解析 '\(dateStr)'")
+            continue
+        }
+        let got = FishingSpot.inClosedSeason(d)
+        r.check(id, got == want, "\(dateStr) -> \(got)  期望 \(want)")
+    }
+
+    // ---- 水域类型是否受约束（黑坑/池塘豁免）
+    for c in Vec.list(cs, "subjectTo") {
+        let id = Vec.str(c, "id", "?")
+        let type = Int(Vec.num(c, "waterType", -1))
+        let want = Vec.bool(c, "expect", false)
+
+        var s = FishingSpot()
+        s.waterType = type
+        let got = s.subjectToClosedSeason()
+        r.check(id, got == want,
+                "水域类型 \(type) -> \(got)  期望 \(want)"
+                    + (want ? "" : "（人工水域豁免）"))
+    }
+
+    // ---- 距禁渔期开始的天数
+    for c in Vec.list(cs, "daysUntil") {
+        let id = Vec.str(c, "id", "?")
+        let dateStr = Vec.str(c, "date", "")
+        let want = Int(Vec.num(c, "expect", -999))
+
+        guard let d = dateOf(dateStr) else {
+            r.check(id + " 日期解析", false, "无法解析 '\(dateStr)'")
+            continue
+        }
+        let got = FishingSpot.daysUntilClosedSeason(d)
+        r.check(id, got == want, "\(dateStr) -> \(got) 天  期望 \(want)")
+    }
+
+    // ---- 常量与官方文本
+    //
+    // 文本必须与官方通告一致。「一人一杆一线一钩」这种网上流传但**查不到官方
+    // 条文**的说法，早先版本引用过、后来撤掉了，这里锁住防止再被加回去。
+    r.check("禁渔期起始常量",
+            FishingSpot.closedMonthFrom == 5 && FishingSpot.closedDayFrom == 16,
+            "\(FishingSpot.closedMonthFrom)月\(FishingSpot.closedDayFrom)日")
+    r.check("禁渔期结束常量",
+            FishingSpot.closedMonthTo == 7 && FishingSpot.closedDayTo == 31,
+            "\(FishingSpot.closedMonthTo)月\(FishingSpot.closedDayTo)日")
+    r.check("禁渔期文本与常量一致",
+            FishingSpot.closedSeasonText.contains("5月16日")
+                && FishingSpot.closedSeasonText.contains("7月31日"),
+            FishingSpot.closedSeasonText)
+    r.check("规则引用不含未经证实的说法",
+            !FishingSpot.closedSeasonRule.contains("一人一杆一线一钩"),
+            "官方条文里查不到「一人一杆一线一钩」，不应作为规定引用")
+}
+
+/// 由 "yyyy-MM-dd" 构造 Date。
+///
+/// ★ 必须固定时区，不能用当前时区。
+///
+///   契约里写的是"2026-05-16"这样的**日历日期**，判定逻辑只看年月日。
+///   如果用本地时区解析，在 UTC-8 之类的时区上，
+///   本地时间的 2026-05-16 00:00 换算成 UTC 是 05-16 08:00，
+///   而 UTC+14 时区上又会往另一侧偏 —— 一旦实现内部按 UTC 取年月日，
+///   测试结果就会随运行机器的时区变化，出现"本机过、CI 挂"这种最难查的情况。
+///
+///   所以这里固定用 Asia/Shanghai（项目基准时区，与 Java 侧
+///   `TimeZone.setDefault(Asia/Shanghai)` 一致），
+///   并且把时刻设成当天**正午**，远离任何时区边界。
+private func dateOf(_ ymd: String) -> Date? {
+    let parts = Vec.parseDateTime(ymd)
+    var comps = DateComponents()
+    comps.year = parts.year
+    comps.month = parts.month
+    comps.day = parts.day
+    comps.hour = 12          // 正午，远离时区边界
+    comps.minute = 0
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        ?? TimeZone(secondsFromGMT: 8 * 3600)!
+    return cal.date(from: comps)
+}
+
 /// 数据模型的序列化往返测试。
 ///
 /// 严格说这部分**不属于跨语言契约**（`vectors.json` 里没有对应段落），

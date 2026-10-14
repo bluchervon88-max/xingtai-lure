@@ -88,6 +88,15 @@ public final class VectorReader {
         return Json.child(root, key);
     }
 
+    /** 取一个整数，例如 closedSeason.subjectTo 里的 waterType */
+    public static int intVal(Map<String, Object> v, String key, int def) {
+        Object o = v.get(key);
+        if (o instanceof Number) {
+            return ((Number) o).intValue();
+        }
+        return def;
+    }
+
     /** 取一个对象数组，例如 coordinateTransform / distance */
     public List<Map<String, Object>> list(String key) {
         List<Object> raw = Json.arr(root.get(key));

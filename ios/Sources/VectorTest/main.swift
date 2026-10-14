@@ -207,6 +207,7 @@ if let theme = Vec.section(root, "theme") {
 // 详见 ContractExtra.swift 的说明 —— 一句话：契约只测一半等于没测，
 // 两边不一致时不会报警。
 runMapProjectionContract(root, r)
+runClosedSeasonContract(root, r)
 runModelRoundTrip(r)
 
 print("\n================================")
