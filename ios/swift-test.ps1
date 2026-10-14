@@ -102,6 +102,30 @@ if ($compileCode -ne 0 -or -not (Test-Path $exe)) {
 Write-Host '  编译通过' -ForegroundColor Green
 Write-Host ''
 
+# ---------------------------------------------------------------- 界面文件语法检查
+#
+# UIKit 文件在 Windows 上无法做类型检查（没有 UIKit），但**语法**可以查。
+# 语法错误比类型错误更基础，先在这儿拦一道。
+# 类型层面的问题由 tools/check-callsites.py 负责。
+$uiFiles = Get-ChildItem (Join-Path $Rel 'XtLure') -Filter *.swift -ErrorAction SilentlyContinue |
+    ForEach-Object { $_.FullName }
+if ($uiFiles) {
+    Write-Host '  界面文件语法检查…' -ForegroundColor DarkGray
+    $prevEap2 = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $uiOut = & swiftc -parse @uiFiles 2>&1
+    $uiCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap2
+    $uiErrs = $uiOut | Where-Object { $_ -match 'error:' }
+    if ($uiErrs) {
+        $uiErrs | Select-Object -First 12 | ForEach-Object { "    $_" }
+        Write-Host "  界面文件有语法错误" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host ("  界面语法检查通过（" + $uiFiles.Count + " 个文件）") -ForegroundColor Green
+    Write-Host ''
+}
+
 # ---------------------------------------------------------------- 运行
 # 切到工程根目录：契约文件按当前工作目录向上查找
 Set-Location $Proj

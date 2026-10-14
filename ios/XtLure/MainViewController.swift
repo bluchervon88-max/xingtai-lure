@@ -234,10 +234,21 @@ final class MainViewController: UIViewController {
                                       SunMoon.fishActivityScore(age))))
 
         // 5) 投影比例：两个方向的地面米数必须相等（否则地图会拉伸变形）
-        let vp = GeoViewport(centerLat: 37.225, centerLon: 114.775, widthPx: 390, heightPx: 600, zoom: 1.0)
-        let ratioOK = abs(vp.pxPerLonDeg() / vp.pxPerLatDeg() - cos(37.225 * .pi / 180)) < 1e-9
-        rows.append(("投影比例", String(format: "lon/lat = %.6f %@",
-                                      vp.pxPerLonDeg() / vp.pxPerLatDeg(),
+        //
+        // ★ 这里曾经写错过三处，CI 才报出来（本地只做了语法检查，没做类型检查）：
+        //     1. 参数标签顺序 —— 实际是 (width:height:zoom:centerLat:centerLon:)，
+        //        我按 (centerLat:centerLon:widthPx:heightPx:zoom:) 写了
+        //     2. width/height/zoom 是 Float，字面量要写成 390 而不是 390（整型推断）
+        //     3. pxPerLonDeg / pxPerLatDeg 是**属性**不是方法，不加括号
+        //
+        //   教训：UIKit 文件在 Windows 上只能验语法，验不了类型 ——
+        //   而"语法对、类型错"正好是这类错误。已加 tools/check-callsites.py 兜住。
+        let vp = GeoViewport(width: 390, height: 600, zoom: 1,
+                             centerLat: 37.225, centerLon: 114.775)
+        let ratio = Double(vp.pxPerLonDeg) / Double(vp.pxPerLatDeg)
+        let expect = cos(37.225 * Double.pi / 180)
+        let ratioOK = abs(ratio - expect) < 1e-6
+        rows.append(("投影比例", String(format: "lon/lat = %.6f %@", ratio,
                                       ratioOK ? "✅ 与 cos(纬度) 一致" : "❌ 不一致，地图会变形")))
 
         return rows

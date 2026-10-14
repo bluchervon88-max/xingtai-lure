@@ -172,6 +172,26 @@ if (Test-Path (Join-Path $Proj 'res\drawable\ic_launcher_background.xml')) {
     if ($LASTEXITCODE -ne 0) { $totalFail++ }
 }
 
+# ---------------------------------------------------------------- iOS 界面代码的调用点
+#
+# ★ 为什么需要：开发机是 Windows，没有 UIKit，界面文件在本地只能做**语法**检查，
+#   做不了类型检查。而"语法对、类型错"正好是一大类错误。
+#   实测踩过：MainViewController 里调 GeoViewport 时参数标签写反，
+#   本地完全看不出，一路推到 GitHub Actions 的 macOS runner 上才报出来 ——
+#   而 macOS runner 是贵额度，一轮来回要好几分钟。
+#
+#   这个检查把界面文件对核心 API 的调用与真实签名比对，能抓：
+#     · 参数标签写错 / 个数不对
+#     · 属性被当成方法调用（xx.pxPerLatDeg()）
+#     · 声明是 Float 却传整数字面量
+Head "check-callsites  iOS 界面代码调用点"
+if ($Python) {
+    & $Python (Join-Path $Tools 'check-callsites.py')
+    if ($LASTEXITCODE -ne 0) { $totalFail++ }
+} else {
+    Write-Host "  跳过：找不到 Python" -ForegroundColor Yellow
+}
+
 # ---------------------------------------------------------------- iOS 工程结构
 #
 # ★ 手写的 pbxproj 必须校验。
