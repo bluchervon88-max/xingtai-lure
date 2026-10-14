@@ -137,18 +137,51 @@ def split_params(s):
 
 
 def parse_param(p):
-    """解析一个参数，返回 (标签, 类型)。没有标签时返回 (None, 类型)"""
+    """解析一个参数，返回 (标签, 类型, 是否有默认值)。
+
+    没有标签时返回 (None, 类型, 有默认值)。
+
+    ★「有默认值」这个信息是必须的：Swift 允许省略带默认值的参数，
+      所以调用点的标签集合**不需要**与声明完全相等，只要：
+        · 给出的标签都在声明里，且顺序正确
+        · 没有默认值的参数都给了
+      第一版没考虑这点，把 `ViewNode(...)` 省略尾部默认参数判成了错误 ——
+      **误报**。误报比不报更糟：它会训练人忽略这个检查。
+    """
     # 形式：`name: Type` / `_ name: Type` / `_ name: Type = 默认值`
-    p = p.split("=")[0].strip()
-    m = re.match(r"^(_\s+)?(\w+)\s*:\s*(.+)$", p)
+    head, sep, _ = p.partition("=")
+    has_default = bool(sep)
+    head = head.strip()
+    m = re.match(r"^(_\s+)?(\w+)\s*:\s*(.+)$", head)
     if not m:
-        return None, None
+        return None, None, has_default
     explicit_underscore = bool(m.group(1))
     name = m.group(2)
     typ = m.group(3).strip()
     if explicit_underscore:
-        return None, typ        # `_ name: Type` 调用时不写标签
-    return name, typ
+        return None, typ, has_default        # `_ name: Type` 调用时不写标签
+    return name, typ, has_default
+
+
+def labels_ok(given, decl_labels, decl_defaults):
+    """调用点给出的标签是否与某个声明相容。
+
+    相容的定义（按 Swift 的调用规则）：
+      1. 给出的标签都能在声明里按顺序找到（顺序不能乱、不能跳过后又回头）
+      2. 声明里**没有默认值**的参数，调用时必须给出
+    """
+    # 1) 顺序检查：给出的标签必须是声明标签序列的子序列（按顺序）
+    it = iter(decl_labels)
+    for g in given:
+        if not any(d == g for d in it):
+            return False
+    # 2) 必填检查：无默认值的标签必须都出现
+    for lbl, has_def in zip(decl_labels, decl_defaults):
+        if lbl is None:
+            continue          # `_ name:` 形式，没有标签可查
+        if not has_def and lbl not in given:
+            return False
+    return True
 
 
 def parse_core():
@@ -188,22 +221,23 @@ def parse_core():
             # init
             for im in re.finditer(r"public\s+init\s*\(([^)]*)\)", body):
                 params = [parse_param(p) for p in split_params(im.group(1))]
-                labels = tuple(l for (l, _) in params)
-                types = tuple(t for (_, t) in params)
-                api.inits[tname].append((labels, types))
+                labels = tuple(l for (l, _, _) in params)
+                types = tuple(t for (_, t, _) in params)
+                defaults = tuple(d for (_, _, d) in params)
+                api.inits[tname].append((labels, types, defaults))
 
             # 静态方法
             for fm in re.finditer(r"public\s+static\s+func\s+(\w+)\s*\(([^)]*)\)", body):
                 params = [parse_param(p) for p in split_params(fm.group(2))]
-                labels = tuple(l for (l, _) in params)
-                types = tuple(t for (_, t) in params)
+                labels = tuple(l for (l, _, _) in params)
+                types = tuple(t for (_, t, _) in params)
                 api.static_funcs[tname].setdefault(fm.group(1), []).append((labels, types))
 
             # 实例方法
             for fm in re.finditer(r"public\s+func\s+(\w+)\s*\(([^)]*)\)", body):
                 params = [parse_param(p) for p in split_params(fm.group(2))]
-                labels = tuple(l for (l, _) in params)
-                types = tuple(t for (_, t) in params)
+                labels = tuple(l for (l, _, _) in params)
+                types = tuple(t for (_, t, _) in params)
                 first = fm.group(1)
                 if first == "init":
                     continue
@@ -278,12 +312,13 @@ def check_call_site(api, fname, text, problems):
             decls = api.inits.get(tname, [])
             if not decls:
                 continue
-            if any(g == d[0] for (d) in decls for g in [given]):
-                pass
-            if not any(given == d[0] for d in decls):
+            if not any(labels_ok(given, d[0], d[2]) for d in decls if len(d) >= 3):
                 line = text[:m.start()].count("\n") + 1
                 want = " / ".join(
-                    "(" + ", ".join("%s:" % l for l in d[0]) + ")" for d in decls)
+                    "(" + ", ".join(
+                        ("%s:" % l) + ("" if dd else " ★必填")
+                        for l, dd in zip(d[0], d[2])) + ")"
+                    for d in decls if len(d) >= 3)
                 have = "(" + ", ".join(
                     "%s:" % g if g else "_" for g in given) + ")"
                 problems.append(
@@ -308,6 +343,55 @@ def check_call_site(api, fname, text, problems):
 
 
 def main():
+    # ---------------------------------------------------------------- 自测
+    #
+    # ★ 为什么检查器自己也要有测试
+    #
+    #   这个脚本的第一版有个**误报**：不认 Swift 的默认参数，
+    #   把 `ViewNode(...)` 省略尾部默认参数判成了错误。
+    #   而修误报很容易顺手修成**漏报**（放宽到什么都通过）——
+    #   那样它就变成一个永远说"通过"的摆设，比没有还糟。
+    #
+    #   所以用几个已知案例把判定逻辑钉住：真正该报的必须报，合法的必须放行。
+    #   其中第一条就是实测踩到的那个 CI 失败，它必须一直被抓住。
+    cases = [
+        # (说明, 调用点标签, 声明标签, 声明默认值, 期望结论)
+        ("实测踩到的真实错误：GeoViewport 参数标签顺序写反",
+         ("centerLat", "centerLon", "widthPx", "heightPx", "zoom"),
+         ("width", "height", "zoom", "centerLat", "centerLon"),
+         (False, False, False, False, False), False),
+        ("正确调用（全部参数给齐）",
+         ("width", "height", "zoom", "centerLat", "centerLon"),
+         ("width", "height", "zoom", "centerLat", "centerLon"),
+         (False, False, False, False, False), True),
+        ("正确调用（省略尾部有默认值的参数）—— 第一版误报的就是这种",
+         ("typeName", "x", "y", "width", "height", "hidden", "transparent"),
+         ("typeName", "x", "y", "width", "height", "hidden",
+          "transparent", "scrollContentHeight", "text",
+          "isContentBearing", "children"),
+         (False, False, False, False, False, True,
+          True, True, True, True, True), True),
+        ("漏了必填参数",
+         ("typeName", "x"), ("typeName", "x", "y"),
+         (False, False, False), False),
+        ("标签顺序颠倒",
+         ("y", "x"), ("x", "y"), (False, False), False),
+        ("多给了声明里没有的标签",
+         ("width", "height", "zoom", "nonsense"),
+         ("width", "height", "zoom"), (False, False, False), False),
+    ]
+    st_bad = []
+    for desc, given, decl, defaults, want in cases:
+        if labels_ok(given, decl, defaults) != want:
+            st_bad.append("%s（期望 %s）" % (desc, want))
+    print("")
+    if st_bad:
+        print("  [FAIL] 检查器自身的判定逻辑有问题，它给出的结论不可信：")
+        for b in st_bad:
+            print("    " + b)
+        return 1
+    print("  检查器自测通过（%d 个案例：该报的报，合法的放行）" % len(cases))
+
     api = parse_core()
     print("")
     print("  从核心层解析出:")
