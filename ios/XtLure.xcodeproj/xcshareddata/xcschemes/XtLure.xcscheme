@@ -52,6 +52,32 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
+         <!--
+            UI 测试目标。
+
+            ★ 这一段不加的话，`xcodebuild test -scheme XtLure` 会报
+              "Scheme XtLure is not currently configured for the test action"，
+              或者更含糊的"没有可运行的测试"。
+
+            为什么要有这个测试：开发机是 Windows、看不到 iPhone 屏幕，
+            **诊断模块是唯一的观测通道**（把视图层级写成文件供导出）。
+            但诊断代码依赖 UIKit，在 Windows 上一行都跑不了。
+            这个测试在 CI 的模拟器上真正启动 App，
+            验证诊断文件确实被写出、内容结构正确 ——
+            避免用户装到真机上才发现拿不到任何数据。
+
+            BlueprintIdentifier 必须与 project.pbxproj 里那个 target 的 ID 完全一致。
+         -->
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "DD0000000000000000000050"
+               BuildableName = "XtLureUITests.xctest"
+               BlueprintName = "XtLureUITests"
+               ReferencedContainer = "container:XtLure.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

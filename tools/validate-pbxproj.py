@@ -197,6 +197,57 @@ def main():
     with open(PBXPROJ, "r", encoding="utf-8") as f:
         text = f.read()
 
+    # ---- 0. ★ 重复对象 ID 检查（必须在解析**之前**做）
+    #
+    #   pbxproj 的 objects 是一个大字典。如果两个对象用了同一个 ID，
+    #   解析成 Python 字典时**后者会静默覆盖前者** ——
+    #   而 pbxproj 里对象的排列是字母序的，被覆盖掉的那个就不存在了。
+    #
+    #   实测踩到：加 UI 测试 target 时给测试源文件分配了 BB...0013，
+    #   那个 ID 已经被 SystemTimeZone.swift 占用了。结果是
+    #   `SystemTimeZone.swift in Sources` 那一行被覆盖掉 ——
+    #   引用还在，但对象没了。
+    #
+    #   这种错误的表现极隐蔽：Xcode 可能报一个看不出原因的错误，
+    #   也可能**静默地不编译那个文件**（构建成功、产物正常、代码没进去，
+    #   直到运行时才崩）。所以必须在解析前用文本级扫描抓出来。
+    #
+    #   注意：同一个 ID 在文件里正常会出现多次（定义一次 + 被引用多次），
+    #   所以必须把"定义"和"引用"区分开。二者在文本上长得很像：
+    #
+    #     定义（两处都是）：
+    #       \t\tAA0000000000000000000013 /* X */ = {     <- 顶层对象，2 个 tab
+    #
+    #     引用 —— 有两种写法：
+    #       \t\t\t\tAA0000000000000000000013 /* X */,   <- 数组元素，逗号结尾
+    #       \t\t\t\t\tDD0000000000000000000001 = {       <- 字典元素，缩进更深
+    #
+    #   ★ 最后那种是踩过的坑：`PBXTargetDependency.targetProxy` 是个**字典**，
+    #     里面用 `ID = { ... }` 形式引用另一个对象，语法上与定义一模一样。
+    #     第一版只按"行首是 ID 且后面跟 = {"判定，把这种引用也算成了定义 ——
+    #     **误报**，而且报的是工程里本来就存在的合法写法。
+    #
+    #   可靠的区分方式是缩进深度：顶层对象的定义固定是 2 个 tab。
+    #   这不是"聪明"的办法，但 pbxproj 的格式就是固定的，
+    #   而且比写一个完整的结构解析器更难出错。
+    id_defs = re.findall(r"(?m)^\t\t([A-Fa-f0-9]{24})\s*(?:/\*.*?\*/)?\s*=\s*\{", text)
+    seen_def = {}
+    for oid in id_defs:
+        seen_def[oid] = seen_def.get(oid, 0) + 1
+    dupes = {k: v for k, v in seen_def.items() if v > 1}
+    if dupes:
+        for oid, cnt in sorted(dupes.items()):
+            # 把被重复定义的行都找出来，方便定位
+            locs = [i + 1 for i, line in enumerate(text.split("\n"))
+                    if re.match(r"^\t\t%s\s*(?:/\*.*?\*/)?\s*=\s*\{" % oid, line)]
+            problems.append("对象 ID 重复定义 %d 次: %s（第 %s 行）\n"
+                            "        → 解析成字典时后者会覆盖前者，"
+                            "被覆盖的对象等于不存在"
+                            % (cnt, oid, ", ".join(str(x) for x in locs)))
+        print("  ⚠ 发现 %d 个重复的对象 ID" % len(dupes))
+    else:
+        print("  对象 ID 唯一性: %d 个定义，无重复 ✅" % len(id_defs))
+
     try:
         plist = OpenStepParser(text).parse_value()
     except ParseError as e:
@@ -254,10 +305,26 @@ def main():
         print("  对象 ID 格式: 全部 24 位十六进制 ✅")
 
     # ---- 4. Sources 阶段的引用链
+    #
+    # ★ 重复检查必须**按 target 分别做**，不能把所有 target 的编译列表合起来看。
+    #
+    #   这个工程有两个 target：App（XtLure）和 UI 测试（XtLureUITests）。
+    #   它们各自有独立的 Sources 阶段，同一个文件在两个 target 里各出现一次
+    #   是**完全正常**的（逻辑层代码 App 要编、测试也要编）。
+    #
+    #   第一版把所有 target 的 fileRef 收进一个列表再找重复，
+    #   于是把这种正常情况报成了"同一文件被重复加入编译列表" —— **误报**。
+    #   误报比不报更糟：它会训练人忽略这个检查。
     targets = [o for o in objects.values()
                if isinstance(o, dict) and o.get("isa") == "PBXNativeTarget"]
     compiled_refs = []
+    target_names = {t.get("name", "?"): oid for oid, t in objects.items()
+                    if isinstance(t, dict) and t.get("isa") == "PBXNativeTarget"}
+    used_in_targets = {}      # fileRef -> [target 名...]
+
     for t in targets:
+        tname = t.get("name", "?")
+        local = []
         for ph_id in t.get("buildPhases", []):
             ph = objects.get(ph_id, {})
             if ph.get("isa") != "PBXSourcesBuildPhase":
@@ -268,14 +335,17 @@ def main():
                 if fr not in objects:
                     problems.append("PBXBuildFile %s 的 fileRef 缺失/无效" % bf_id[:8])
                 else:
+                    local.append(fr)
                     compiled_refs.append(fr)
+                    used_in_targets.setdefault(fr, []).append(tname)
+        # 同一个 target **内部**重复才是错误
+        for fr in set(local):
+            if local.count(fr) > 1:
+                problems.append("target %s 内部把同一文件重复加入了编译列表: %s"
+                                % (tname, objects.get(fr, {}).get("path", fr[:8])))
 
-    dup = [x for x in set(compiled_refs) if compiled_refs.count(x) > 1]
-    for d in dup:
-        problems.append("同一文件被重复加入编译列表: %s"
-                        % objects.get(d, {}).get("path", d[:8]))
-    print("  参与编译的源文件: %d 个（去重后 %d）"
-          % (len(compiled_refs), len(set(compiled_refs))))
+    print("  参与编译的源文件: %d 个引用（%d 个不同文件，分布在 %d 个 target）"
+          % (len(compiled_refs), len(set(compiled_refs)), len(targets)))
 
     # ---- 5. 文件在磁盘上是否真的存在
     #

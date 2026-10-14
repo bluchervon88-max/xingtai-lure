@@ -133,6 +133,52 @@ jobs:
           echo ""
           echo "可用 SDK:"
           xcodebuild -showsdks | grep -i ios || true
+          echo ""
+          echo "可用的 iOS 模拟器:"
+          xcrun simctl list devices available | grep -i iphone | head -10 || true
+
+      # ================================================================ 模拟器上跑诊断测试
+      #
+      # ★ 这一步为什么重要
+      #
+      #   开发机是 Windows，看不到 iPhone 屏幕。**诊断模块是唯一的观测通道** ——
+      #   它把视图层级和实测尺寸写成文件，用户从「文件」App 导出后发给开发者。
+      #
+      #   但诊断代码依赖 UIKit，在 Windows 上一行都跑不了。
+      #   如果它写不出文件，用户装到真机上按了按钮也拿不到任何东西，
+      #   而开发者只能干等一轮（一次真机往返 = 用户手动装 IPA + 操作 + 发文件）。
+      #
+      #   所以在模拟器上**真正启动 App**，验证：App 不崩、诊断文件确实被写出、
+      #   报告内容结构正确。测试还会把报告全文打印到日志里 ——
+      #   这样在还没有真机的时候，就能先"看见"一次真实运行时的布局数据。
+      #
+      # ★ 为什么放在 archive 之前
+      #
+      #   这一步编译的是 Debug + 模拟器 SDK，比 archive 快得多。
+      #   如果 App 本身编译不过或启动就崩，先在这里失败，
+      #   省掉后面 archive + 打包 + 上传的几分钟。
+      - name: 诊断测试（模拟器）
+        run: |
+          set -o pipefail
+          # 选一台可用的 iPhone 模拟器。不写死机型 ——
+          # 不同 macOS runner 镜像预装的模拟器不一样，写死了会因"设备不存在"而失败。
+          DEVICE=$(xcrun simctl list devices available \
+            | grep -oE 'iPhone [0-9A-Za-z ()]+ \(' | head -1 | sed 's/ ($//' | sed 's/ *$//')
+          if [ -z "$DEVICE" ]; then
+            echo "::error::找不到可用的 iPhone 模拟器"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "使用模拟器: $DEVICE"
+          xcodebuild test \
+            -project ios/XtLure.xcodeproj \
+            -scheme XtLure \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | tail -150
 
       - name: 构建归档（不签名）
         run: |
