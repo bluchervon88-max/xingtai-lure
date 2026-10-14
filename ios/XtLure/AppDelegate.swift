@@ -35,7 +35,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // 记一条启动痕迹。诊断文件是每次布局后覆盖的，
         // 如果 App 启动就崩（还没走到布局），至少这里能留下线索。
-        Diag.recordCrash("App 启动 (iOS \(UIDevice.current.systemVersion), \(Diag.deviceModel()))")
+        Diag.recordCrash("App 启动 (iOS \(UIDevice.current.systemVersion), \(Diag.deviceDescription))")
 
         return true
     }

@@ -195,4 +195,18 @@ enum Diag {
             return String(bytes: bytes, encoding: .utf8) ?? "?"
         }
     }
+
+    /// 机型的可读描述，例如 `iPhone10,2 (iPhone 8 Plus)`。
+    ///
+    /// ★ 为什么要有这个成员：原来调用方直接写 `Diag.deviceModel()`，
+    ///   重构时那个方法被移进 `ViewTree`，两个调用点就断了 ——
+    ///   编译报 `type 'Diag' has no member 'deviceModel'`，一路推到 CI 才发现。
+    ///
+    ///   现在提供一个**语义稳定**的入口：内部用哪个类型、叫什么名字都可以变，
+    ///   调用方只依赖 `Diag.deviceDescription` 这一个名字。
+    ///   界面层也不需要为了拼一个机型名去 import 核心层的类型。
+    static var deviceDescription: String {
+        let id = rawDeviceIdentifier()
+        return "\(id) (\(ViewTree.modelName(id)))"
+    }
 }

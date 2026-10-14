@@ -103,7 +103,7 @@ final class MainViewController: UIViewController {
         let screen = UIScreen.main.bounds
         let insets = view.safeAreaInsets
         contentStack.addArrangedSubview(card(title: "运行环境", rows: [
-            ("设备", Diag.deviceModel()),
+            ("设备", Diag.deviceDescription),
             ("系统", "iOS \(UIDevice.current.systemVersion)"),
             ("屏幕", String(format: "%.0f × %.0f pt", screen.width, screen.height)),
             ("像素", String(format: "%.0f × %.0f (@%.0fx)", screen.width * UIScreen.main.scale,

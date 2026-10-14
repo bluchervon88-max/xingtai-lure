@@ -342,6 +342,112 @@ def check_call_site(api, fname, text, problems):
                     break
 
 
+def parse_app_types():
+    """解析界面层**自己**的类型（例如 `Diag`）及其静态成员。
+
+    ★ 为什么要加这一层
+
+      原来的检查只对照核心层 API，抓不到界面层内部的引用错误。实测踩到：
+
+        重构 Diagnostics.swift 时把 `deviceModel()` 移进了 ViewTree，
+        但 AppDelegate 和 MainViewController 还在调 `Diag.deviceModel()`
+        -> `error: type 'Diag' has no member 'deviceModel'`
+
+      本地语法检查看不出（`Diag.deviceModel()` 语法完全合法），
+      一路推到 CI 的 macOS runner 才报出来。而这类错误纯属本地就能查的 ——
+      只要知道 `Diag` 有哪些成员。
+
+    只统计**顶层**类型（顶格的 enum/class/struct/extension），
+    因为嵌套类型的成员用法（`Outer.Inner.x`）模式不同，误判风险高。
+    """
+    types = {}          # {类型名: {"static": set(), "all": set()}}
+    if not os.path.isdir(UI_DIR):
+        return types
+    for fn in sorted(os.listdir(UI_DIR)):
+        if not fn.endswith(".swift"):
+            continue
+        text = strip_comments(open(os.path.join(UI_DIR, fn), encoding="utf-8").read())
+
+        # 顶层类型声明（行首无缩进）
+        for m in re.finditer(r"(?m)^(?:public\s+|internal\s+|final\s+)*"
+                             r"(?:enum|class|struct|extension)\s+(\w+)", text):
+            types.setdefault(m.group(1), {"static": set(), "all": set()})
+
+        # 逐个顶层类型块，收集成员
+        for tm in re.finditer(r"(?m)^(?:public\s+|internal\s+|final\s+)*"
+                              r"(?:enum|class|struct)\s+(\w+)[^{]*\{", text):
+            tname = tm.group(1)
+            start = tm.end()
+            depth = 1
+            i = start
+            while i < len(text) and depth > 0:
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                i += 1
+            body = text[start:i - 1]
+            types.setdefault(tname, {"static": set(), "all": set()})
+            # static 成员才是"类型 API"，报错时要突出显示这些
+            for mm in re.finditer(r"\bstatic\s+(?:func|var|let)\s+(\w+)", body):
+                types[tname]["static"].add(mm.group(1))
+                types[tname]["all"].add(mm.group(1))
+            # 函数/属性里声明的局部变量也会被收进来（用于"合法"判定，避免误报），
+            # 但它们不是类型 API，报错时不作为"可用成员"展示
+            for mm in re.finditer(r"\b(?:func|var|let)\s+(\w+)", body):
+                types[tname]["all"].add(mm.group(1))
+    return types
+
+
+def check_app_internal_refs(app_types, problems):
+    """检查界面层各文件里 `TypeName.member` 的引用是否真实存在。
+
+    这是上面那个 `Diag.deviceModel` 错误的直接防护。
+    """
+    if not os.path.isdir(UI_DIR):
+        return
+    # Swift 语言自带的"成员"，不是类型声明的成员。漏掉它们会误报。
+    #   .self  —— 元类型（`SceneDelegate.self`、`[weak self]` 那套）
+    #   .Type / .Protocol —— 元类型与协议类型
+    #   .init  —— 构造器引用
+    LANGUAGE_MEMBERS = {"self", "Type", "Protocol", "init", "alloc", "deinit"}
+    for fn in sorted(os.listdir(UI_DIR)):
+        if not fn.endswith(".swift"):
+            continue
+        text = strip_comments(open(os.path.join(UI_DIR, fn), encoding="utf-8").read())
+        for tname, info in app_types.items():
+            members = info["all"]
+            if not members:
+                continue
+            for m in re.finditer(r"\b" + re.escape(tname) + r"\.(\w+)", text):
+                member = m.group(1)
+                if member in LANGUAGE_MEMBERS:
+                    continue
+                # 类型自身的声明行与 extension 不算引用
+                line_start = text.rfind("\n", 0, m.start()) + 1
+                line = text[line_start:text.find("\n", m.start())]
+                stripped = line.strip()
+                if stripped.startswith(("enum ", "class ", "struct ", "extension ",
+                                        "public enum ", "public class ",
+                                        "public struct ", "final class ",
+                                        "public final class ")):
+                    continue
+                if member not in members:
+                    line_no = text[:m.start()].count("\n") + 1
+                    # 只展示 static 成员 —— 那才是类型的 API。
+                    # 局部变量名虽然也在 all 里（收集它们是为了避免误报），
+                    # 但作为"可用成员"展示只会干扰阅读：真正要找的
+                    # `rawDeviceIdentifier` / `deviceDescription` 会被
+                    # `bt` / `bytes` / `contentH` 之类淹没。
+                    api_members = sorted(info["static"])
+                    problems.append(
+                        "%s:%d  `%s` 没有成员 `%s`\n"
+                        "        可用成员: %s"
+                        % (fn, line_no, tname, member,
+                           ", ".join(api_members) if api_members
+                           else "（该类型没有 static 成员）"))
+
+
 def main():
     # ---------------------------------------------------------------- 自测
     #
@@ -415,6 +521,17 @@ def main():
         check_call_site(api, fn, text, problems)
         print("    %-28s %s" % (fn, "✅" if len(problems) == before else "⚠ 有 %d 个问题"
                                 % (len(problems) - before)))
+
+    # 界面层自身的类型引用（例如 `Diag.xxx`）
+    app_types = parse_app_types()
+    named = {k: v["static"] for k, v in app_types.items() if v["static"]}
+    print("")
+    print("  界面层自定义类型 %d 个: %s" % (
+        len(named), ", ".join(sorted(named))))
+    before = len(problems)
+    check_app_internal_refs(app_types, problems)
+    print("  界面层内部引用检查: %s"
+          % ("✅" if len(problems) == before else "⚠ 有 %d 个问题" % (len(problems) - before)))
 
     print("")
     if problems:
