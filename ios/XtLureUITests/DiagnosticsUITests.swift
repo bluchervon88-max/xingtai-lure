@@ -58,7 +58,7 @@ final class DiagnosticsUITests: XCTestCase {
         app.launch()
 
         // 等 App 稳定。启动本身崩溃的话，这一句就会失败。
-        XCTAssertTrue(app.waitForState(.runningForeground, timeout: 30),
+        XCTAssertTrue(waitUntilForeground(app, timeout: 30),
                       "App 没有进入前台 —— 可能启动即崩溃")
 
         // 诊断是在首次布局之后异步写的（viewDidAppear -> DispatchQueue.main.async）。
@@ -132,7 +132,7 @@ final class DiagnosticsUITests: XCTestCase {
     func testDiagnoseButtonDoesNotCrash() throws {
         app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.waitForState(.runningForeground, timeout: 30))
+        XCTAssertTrue(waitUntilForeground(app, timeout: 30))
 
         // 按标题找按钮（界面上是「诊断」的 UIBarButtonItem）
         let button = app.buttons["诊断"]
@@ -149,12 +149,33 @@ final class DiagnosticsUITests: XCTestCase {
         button.tap()
 
         // 点完之后 App 必须还活着
-        XCTAssertTrue(app.waitForState(.runningForeground, timeout: 10),
+        XCTAssertTrue(waitUntilForeground(app, timeout: 10),
                       "点了「诊断」之后 App 不在前台了 —— 可能崩溃")
         XCTAssertEqual(app.state, .runningForeground, "点「诊断」后 App 状态异常")
     }
 
     // MARK: - 工具
+
+    /// 等 App 进入前台。
+    ///
+    /// ★ 不用 `XCUIApplication.waitForState(_:timeout:)` —— Xcode 16 起那个 API
+    ///   被改名为 `wait(for:timeout:)`，用旧名会直接编译失败：
+    ///
+    ///     error: 'waitForState(_:timeout:)' has been renamed to 'wait(for:timeout:)'
+    ///
+    ///   而开发机上没有 Xcode，编译不了 UI 测试，所以这类改名只能到 CI 才发现。
+    ///
+    ///   这里自己轮询 `state`，不依赖任何版本的 API 名字 ——
+    ///   反正要等的东西很简单，没必要为了少写三行去接一个会改名的接口。
+    private func waitUntilForeground(_ app: XCUIApplication,
+                                     timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.state == .runningForeground { return true }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        return app.state == .runningForeground
+    }
 
     /// 轮询等待文件出现。比固定 sleep 稳，也比固定 sleep 快。
     private func waitForFile(_ url: URL, timeout: TimeInterval) -> Bool {
