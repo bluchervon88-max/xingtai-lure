@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>iOS 存储实测 · 邢台路亚</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="存储实测">
+<meta name="theme-color" content="#0E1116">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232FB6A8'/><text y='72' x='50' font-size='60' text-anchor='middle'>🎣</text></svg>">
+<style>
+  :root{
+    --bg:#0E1116; --card:#171C24; --surface2:#1F2630; --surface3:#2C3542;
+    --text:#E9EEF5; --dim:#9AA6B5; --faint:#6B7684;
+    --accent:#2FB6A8; --ok:#4ADE80; --warn:#F0B429; --danger:#F87171;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom));
+    max-width:640px;margin:0 auto;
+  }
+  h1{font-size:19px;margin:8px 0 4px}
+  .sub{color:var(--faint);font-size:12px;margin-bottom:18px}
+  .card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+  .card h2{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  .card h2 .num{
+    background:var(--accent);color:var(--bg);width:22px;height:22px;border-radius:50%;
+    display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto;
+  }
+  ol{margin:0;padding-left:20px}
+  li{margin:6px 0}
+  button{
+    width:100%;min-height:52px;border:0;border-radius:10px;font-size:16px;font-weight:600;
+    background:var(--accent);color:var(--bg);cursor:pointer;margin-top:10px;
+    font-family:inherit;
+  }
+  button.ghost{background:var(--surface2);color:var(--text);font-weight:400;font-size:14px;min-height:46px}
+  button:active{opacity:.75}
+  button[disabled]{opacity:.45}
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--surface3);font-size:14px}
+  .kv:last-child{border-bottom:0}
+  .kv .k{color:var(--faint);flex:0 0 auto}
+  .kv .v{text-align:right;word-break:break-all;font-variant-numeric:tabular-nums}
+  .big{font-size:26px;font-weight:700;line-height:1.3;margin:6px 0}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .danger{color:var(--danger)} .faint{color:var(--faint)}
+  .verdict{padding:14px;border-radius:10px;background:var(--surface2);margin-top:12px}
+  .hint{font-size:12.5px;color:var(--faint);margin-top:10px;line-height:1.7}
+  code{background:var(--surface2);padding:2px 6px;border-radius:5px;font-size:12.5px;word-break:break-all}
+  .footer{color:var(--faint);font-size:11.5px;text-align:center;margin:22px 0 8px;line-height:1.8}
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11.5px;background:var(--surface2);color:var(--dim)}
+  details{margin-top:10px}
+  summary{cursor:pointer;color:var(--dim);font-size:13px;padding:6px 0}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;color:var(--dim)}
+</style>
+</head>
+<body>
+
+<h1>iOS 存储存活实测</h1>
+<div class="sub">目的：验证「添加到主屏幕」的网页应用，放置一周不用之后，本地数据会不会被系统清掉。<br>这决定了「邢台路亚」能不能做成不要安装包的网页版。</div>
+
+<div class="card" id="steps">
+  <h2><span class="num">1</span>第一步：现在按一下这个按钮</h2>
+  <button id="btnStart">开始测试（写入测试数据）</button>
+  <div class="hint" id="startHint">按完之后，页面上方会显示「测试已开始」。</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>第二步：添加到主屏幕</h2>
+  <ol id="installSteps">
+    <li>用 <b>Safari</b> 打开这个页面（不要用微信内的浏览器）</li>
+    <li>点屏幕底部的「分享」按钮 <span class="pill">方框+向上箭头</span></li>
+    <li>在列表里找到并点击「<b>添加到主屏幕</b>」</li>
+    <li>点右上角「添加」</li>
+  </ol>
+  <div class="hint">加完之后，桌面上会多一个图标。<b>从那个图标打开</b>这个页面（不是从 Safari 打开）。</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>第三步：记住，然后等</h2>
+  <ol>
+    <li><b>今天开始算，7 天内不要打开这个图标</b></li>
+    <li>第 8 天之后再打开它</li>
+    <li>打开后会看到结果，把结果截图发我，或者点「上报结果」</li>
+  </ol>
+  <div class="hint">
+    ★ 关键：中间<b>完全不要打开</b>。哪怕打开看一眼也会刷新计时，测试就白做了。<br>
+    ★ 建议现在就在手机日历里加个提醒：<b>8 天后打开桌面上的「存储实测」图标</b>。
+  </div>
+</div>
+
+<div class="card" id="resultCard" style="display:none">
+  <h2>检测结果</h2>
+  <div id="verdict"></div>
+</div>
+
+<div class="card">
+  <h2>这台设备的信息</h2>
+  <div id="deviceInfo"></div>
+</div>
+
+<div class="card">
+  <h2>测试数据</h2>
+  <div id="storageInfo"></div>
+  <button class="ghost" id="btnCheck">刷新检测</button>
+  <button class="ghost" id="btnReport">上报结果到服务器</button>
+  <button class="ghost" id="btnReset" style="color:var(--danger)">重新开始测试（清空数据）</button>
+  <div class="hint" id="ioHint"></div>
+</div>
+
+<div class="footer">
+  邢台路亚 · 网页版可行性验证<br>
+  <span id="footNote"></span>
+</div>
+
+<script>
+'use strict';
+
+// ★ 存活信标：脚本一开头就改一下 DOM。
+//   移动端和 headless 环境下看不到控制台，如果脚本压根没跑（解析错误、被拦截等），
+//   页面会「看起来正常但什么都不工作」，极难定位。有了这个信标，
+//   从 DOM dump 里就能立刻区分「脚本没跑」和「脚本跑了但逻辑出错」。
+(function beacon(){
+  try {
+    var el = document.getElementById('footNote');
+    if (el) el.textContent = 'JS 已启动…';
+    document.documentElement.setAttribute('data-js', 'started');
+  } catch (e) { /* 忽略 */ }
+})();
+
+// ============================================================ 常量
+const DB_NAME = 'xtlure-storage-test';
+const DB_VERSION = 1;
+const STORE = 'markers';
+const LS_KEY = 'xtlure-storage-test-first';
+const TEST_DAYS = 7;
+
+// ============================================================ IndexedDB 封装
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbPut(record) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(record);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbGet(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbAll() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbClear() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).clear();
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// ============================================================ 存储能力探测
+
+async function storageEstimate() {
+  const out = { supported: false, usage: null, quota: null, persisted: null, persistGranted: null };
+  if (!navigator.storage) return out;
+  out.supported = true;
+  try {
+    if (navigator.storage.estimate) {
+      const e = await navigator.storage.estimate();
+      out.usage = e.usage;
+      out.quota = e.quota;
+    }
+    if (navigator.storage.persisted) {
+      out.persisted = await navigator.storage.persisted();
+    }
+  } catch (e) { /* 忽略 */ }
+  return out;
+}
+
+/** 主动申请持久化存储。授予后浏览器不会因为空间压力自动清理 */
+async function requestPersist() {
+  if (!navigator.storage || !navigator.storage.persist) return null;
+  try {
+    return await navigator.storage.persist();
+  } catch (e) {
+    return null;
+  }
+}
+
+// ============================================================ 设备信息
+
+function deviceInfo() {
+  const ua = navigator.userAgent;
+  // iOS 版本：从 UA 里抽，例如 "OS 17_4_1"
+  let iosVer = '';
+  const m = ua.match(/OS (\d+[_\d]*) like Mac OS X/);
+  if (m) iosVer = m[1].replace(/_/g, '.');
+
+  // 是否独立窗口（即从主屏幕图标打开）
+  const standalone =
+    window.navigator.standalone === true ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+  // 是否 iPad（iPadOS 13+ 的 UA 伪装成 Mac）
+  const isIPad = /iPad/.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document);
+
+  return {
+    ua,
+    iosVersion: iosVer,
+    standalone,
+    isIOS: /iPhone|iPad|iPod/.test(ua) || isIPad,
+    isIPad,
+    isSafari: /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|MicroMessenger/.test(ua),
+    inWeChat: /MicroMessenger/.test(ua),
+    screen: `${screen.width}x${screen.height}@${window.devicePixelRatio || 1}`,
+    dpr: window.devicePixelRatio || 1,
+  };
+}
+
+// ============================================================ 测试逻辑
+
+/** 开始测试：写入标记，并申请持久化 */
+async function startTest() {
+  const now = Date.now();
+  const persisted = await requestPersist();
+  const est = await storageEstimate();
+
+  const record = {
+    id: 'main',
+    startedAt: now,
+    startedAtText: new Date(now).toString(),
+    persistedAtStart: persisted,
+    ua: navigator.userAgent,
+  };
+  await idbPut(record);
+  await idbPut({ id: 'hb-' + now, heartbeatAt: now, heartbeatAtText: new Date(now).toString() });
+
+  try { localStorage.setItem(LS_KEY, String(now)); } catch (e) { /* 忽略 */ }
+
+  await checkTest();
+}
+
+/** 每次打开都记一次心跳，这样可以看清"什么时候来过、什么时候断的" */
+async function recordHeartbeat() {
+  const now = Date.now();
+  try {
+    await idbPut({ id: 'hb-' + now, heartbeatAt: now, heartbeatAtText: new Date(now).toString() });
+  } catch (e) { /* 忽略 */ }
+}
+
+/** 检测：本地数据还在不在 */
+async function checkTest() {
+  // ★ 阶段记录：挂住的时候要能知道卡在哪一步。
+  //   （调试时发现 headless 环境里 IndexedDB 可能永不回调，光看"没反应"无从下手）
+  const stage = (s) => {
+    document.documentElement.setAttribute('data-stage', s);
+  };
+
+  stage('deviceInfo');
+  const info = deviceInfo();
+
+  stage('storageEstimate');
+  const est = await storageEstimate();
+
+  stage('idbGet');
+  const main = await idbGet('main').catch(() => null);
+
+  stage('idbAll');
+  const all = await idbAll().catch(() => []);
+
+  stage('localStorage');
+  const heartbeats = all.filter((r) => String(r.id).startsWith('hb-'));
+
+  let lsValue = null;
+  try { lsValue = localStorage.getItem(LS_KEY); } catch (e) { /* 忽略 */ }
+
+  let daysSinceFirst = null;
+  let verdictHtml = '';
+  let markerExists = false;
+
+  if (!main) {
+    verdictHtml = `
+      <div class="big faint">尚未开始</div>
+      <div class="hint">还没有写入测试数据。请先按第一步的按钮。</div>`;
+  } else {
+    markerExists = true;
+    const now = Date.now();
+    const elapsedMs = now - main.startedAt;
+    // 用开机以来的真实流逝时间做交叉验证，避免用户手动改系统时间造成误判
+    daysSinceFirst = elapsedMs / 86400000;
+    const daysText = daysSinceFirst.toFixed(2);
+
+    if (daysSinceFirst < TEST_DAYS) {
+      verdictHtml = `
+        <div class="big warn">还需等待 ${(TEST_DAYS - daysSinceFirst).toFixed(1)} 天</div>
+        <div class="kv"><span class="k">数据写入时间</span><span class="v">${new Date(main.startedAt).toLocaleString()}</span></div>
+        <div class="kv"><span class="k">已过去</span><span class="v">${daysText} 天</span></div>
+        <div class="hint">数据目前还在。请<b>关掉页面，7 天内不要再打开</b>，第 8 天再看。</div>`;
+    } else {
+      verdictHtml = `
+        <div class="big ok">数据存活</div>
+        <div class="kv"><span class="k">数据写入时间</span><span class="v">${new Date(main.startedAt).toLocaleString()}</span></div>
+        <div class="kv"><span class="k">已过去</span><span class="v">${daysText} 天</span></div>
+        <div class="kv"><span class="k">期间打开过几次</span><span class="v">${heartbeats.length} 次</span></div>
+        <div class="hint">
+          <b>结论：停在主屏幕的网页应用，7 天不用之后数据仍在。</b><br>
+          这意味着「邢台路亚」可以做成不要安装包的网页版。
+        </div>
+        <button id="btnReport2">上报结果</button>`;
+    }
+  }
+
+  const resultCard = document.getElementById('resultCard');
+  const verdict = document.getElementById('verdict');
+  resultCard.style.display = '';
+  verdict.innerHTML = verdictHtml;
+  const b2 = document.getElementById('btnReport2');
+  if (b2) b2.onclick = report;
+
+  // ---- 设备信息
+  const rows = [
+    ['是否 iPhone/iPad', info.isIOS ? (info.isIPad ? 'iPad' : 'iPhone') : '否（这个测试针对 iOS）'],
+    ['iOS 版本', info.iosVersion || '读不出来'],
+    ['是否从主屏幕打开', info.standalone
+      ? '<span class="ok">是（正确）</span>'
+      : '<span class="danger">否 — 必须从主屏幕图标打开才有意义</span>'],
+    ['是否 Safari', info.isSafari ? '是' : '否'],
+    ['屏幕', info.screen],
+  ];
+  if (info.inWeChat) {
+    rows.push(['⚠️ 微信内置浏览器', '<span class="danger">是 — 请改用 Safari 重新打开</span>']);
+  }
+  document.getElementById('deviceInfo').innerHTML = rows
+    .map((r) => `<div class="kv"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`)
+    .join('');
+
+  // ---- 存储信息
+  const fmtBytes = (b) => {
+    if (b == null) return '—';
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+  };
+  const sRows = [
+    ['IndexedDB 里的标记', markerExists ? `<span class="ok">在（${all.length} 条记录）</span>` : '<span class="danger">不在</span>'],
+    ['localStorage 标记', lsValue ? '<span class="ok">在</span>' : '<span class="danger">不在</span>'],
+    ['已申请持久化存储', est.persisted === null ? '不支持' : (est.persisted ? '<span class="ok">已授予</span>' : '<span class="warn">未授予</span>')],
+    ['已用空间', fmtBytes(est.usage)],
+    ['配额', fmtBytes(est.quota)],
+  ];
+  document.getElementById('storageInfo').innerHTML = sRows
+    .map((r) => `<div class="kv"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`)
+    .join('');
+
+  document.getElementById('footNote').textContent =
+    '检查时间 ' + new Date().toLocaleString();
+
+  // 有标记就回报一次服务端（即使本地被清，服务端也能看到它曾经来过）
+  if (markerExists) {
+    report(true);
+  }
+}
+
+/** 上报结果到服务器（本地日志被清时，服务端日志是唯一的线索） */
+async function report(silent) {
+  const info = deviceInfo();
+  const est = await storageEstimate();
+  const main = await idbGet('main').catch(() => null);
+  const all = await idbAll().catch(() => []);
+
+  const payload = {
+    phase: main ? 'check' : 'started-or-cleared',
+    markerExists: !!main,
+    startedAtText: main ? new Date(main.startedAt).toLocaleString() : null,
+    daysSinceFirst: main ? Number(((Date.now() - main.startedAt) / 86400000).toFixed(2)) : null,
+    recordCount: all.length,
+    persisted: est.persisted,
+    usage: est.usage,
+    quota: est.quota,
+    standalone: info.standalone,
+    iosVersion: info.iosVersion,
+    isIOS: info.isIOS,
+    isSafari: info.isSafari,
+    inWeChat: info.inWeChat,
+    screen: info.screen,
+    ua: navigator.userAgent,
+  };
+
+  const hint = document.getElementById('ioHint');
+  try {
+    const res = await fetch('api/checkin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!silent) hint.innerHTML = '<span class="ok">已上报</span>';
+    else hint.textContent = '已自动上报本次检查。';
+  } catch (e) {
+    // 离线是常态，这里不该报错给用户看
+    hint.innerHTML = silent
+      ? '（离线，未能上报 —— 不影响测试）'
+      : '<span class="warn">上报失败：' + e.message + '（可能没联网，不影响测试）</span>';
+  }
+}
+
+/** 重新开始：清空所有痕迹，用于复测 */
+async function resetTest() {
+  await idbClear().catch(() => {});
+  try { localStorage.removeItem(LS_KEY); } catch (e) { /* 忽略 */ }
+  await checkTest();
+  document.getElementById('startHint').innerHTML =
+    '<span class="warn">已清空。按上面按钮可重新开始。</span>';
+}
+
+// ============================================================ 绑定
+
+document.getElementById('btnStart').onclick = async () => {
+  const btn = document.getElementById('btnStart');
+  btn.disabled = true;
+  btn.textContent = '写入中…';
+  try {
+    await startTest();
+    document.getElementById('startHint').innerHTML =
+      '<span class="ok">测试已开始。</span>接下来做第二步：添加到主屏幕。';
+    btn.textContent = '已开始（可重复按，不影响）';
+  } catch (e) {
+    document.getElementById('startHint').innerHTML =
+      '<span class="danger">写入失败：' + e.message + '</span>（如果是无痕模式，请换普通模式）';
+    btn.textContent = '重试';
+  }
+  btn.disabled = false;
+};
+
+document.getElementById('btnCheck').onclick = checkTest;
+document.getElementById('btnReport').onclick = () => report(false);
+document.getElementById('btnReset').onclick = resetTest;
+
+// 每次打开都记一次心跳，便于事后判断"到底哪天来过"
+//
+// ★ 这里必须自己兜住异常并显示出来。
+//   移动浏览器的错误在真机上很难看到（没有 DevTools），
+//   如果初始化悄悄失败，用户只会看到一片空白而不知道为什么。
+(async () => {
+  const mark = (s) => document.documentElement.setAttribute('data-init', s);
+  mark('iife-begin');
+  try {
+    await recordHeartbeat();
+    mark('heartbeat-done');
+  } catch (e) {
+    console.warn('心跳写入失败（不影响测试）:', e);
+    mark('heartbeat-failed');
+  }
+  try {
+    mark('checkTest-begin');
+    await checkTest();
+    mark('checkTest-done');
+  } catch (e) {
+    // 把失败原因直接显示在页面上，而不是只进控制台
+    const card = document.getElementById('resultCard');
+    const verdict = document.getElementById('verdict');
+    if (card && verdict) {
+      card.style.display = '';
+      verdict.innerHTML =
+        '<div class="big danger">页面初始化失败</div>'
+        + '<div class="hint">请把下面这行内容截图发给开发者：</div>'
+        + '<div class="mono">' + String(e && e.stack ? e.stack : e) + '</div>'
+        + '<div class="hint">常见原因：无痕/隐私模式禁用了本地存储。请用普通模式打开。</div>';
+    }
+    console.error('checkTest 失败:', e);
+  }
+})();
+</script>
+</body>
+</html>

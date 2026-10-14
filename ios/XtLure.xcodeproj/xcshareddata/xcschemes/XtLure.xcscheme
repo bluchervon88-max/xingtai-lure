@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    XtLure 的构建 scheme。
+
+    ★ 为什么必须手写这个文件
+
+      Xcode 平时会自动生成 scheme，但**只有在图形界面里打开过工程才会生成**。
+      本项目的开发机是 Windows，没有 Xcode，CI 上也是全新检出，
+      所以 `xcodebuild -scheme XtLure` 会因为"找不到 scheme"直接失败。
+
+      scheme 文件放在 .xcodeproj/xcshareddata/xcschemes/ 下才叫"共享 scheme"
+      （shared），能被 xcodebuild 和 CI 看到；放在 xcuserdata/ 下是私人 scheme，
+      CI 读不到。
+
+    ★ BuildableReference 里的几个 ID 必须与 project.pbxproj 完全一致
+
+      BlueprintIdentifier   = 目标的 ID            （DD...0001）
+      BuildableName         = 产物文件名          （XtLure.app）
+      BlueprintName         = 目标名              （XtLure）
+      ReferencedContainer   = 工程文件相对路径    （container:XtLure.xcodeproj）
+
+      任何一处对不上，xcodebuild 会报
+      "Scheme XtLure is not currently configured for the build action"
+      或者更难查的 "missing target" 错误。
+-->
+<Scheme
+   LastUpgradeVersion = "1500"
+   version = "1.7">
+   <BuildAction
+      parallelizeBuildables = "YES"
+      buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "DD0000000000000000000001"
+               BuildableName = "XtLure.app"
+               BlueprintName = "XtLure"
+               ReferencedContainer = "container:XtLure.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      shouldUseLaunchSchemeArgsEnv = "YES">
+      <Testables>
+      </Testables>
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      launchStyle = "0"
+      useCustomWorkingDirectory = "NO"
+      ignoresPersistentStateOnLaunch = "NO"
+      debugDocumentVersioning = "YES"
+      debugServiceExtension = "internal"
+      allowLocationSimulation = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "DD0000000000000000000001"
+            BuildableName = "XtLure.app"
+            BlueprintName = "XtLure"
+            ReferencedContainer = "container:XtLure.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Release"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "DD0000000000000000000001"
+            BuildableName = "XtLure.app"
+            BlueprintName = "XtLure"
+            ReferencedContainer = "container:XtLure.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Release"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+</Scheme>

@@ -1,0 +1,79 @@
+# 统一换行符与文本处理方式。
+#
+# ★ 为什么需要这个文件
+#
+#   开发机是 Windows，但**构建跑在 macOS 和 Linux 上**（GitHub Actions）。
+#   Git 在 Windows 上默认会把文本文件的换行符转成 CRLF（`core.autocrlf=true`），
+#   于是：
+#
+#     · 仓库里存的是 LF，检出到 Windows 变成 CRLF —— 本机看着没问题
+#     · 如果**提交时**不小心把 CRLF 存进了仓库，macOS/Linux 上检出还是 CRLF
+#
+#   后者会真的出问题：
+#     · shell 脚本带 CRLF 会报 `bad interpreter: /bin/bash^M`
+#     · Swift 编译器对源文件换行不敏感，但 pbxproj 之类的配置被工具再生成时
+#       可能整个文件 diff 爆炸
+#     · `.xcscheme` 是 XML，CRLF 通常无害，但保持 LF 更一致
+#
+#   所以这里**强制仓库内一律 LF**：`text=auto eol=lf`。
+#   Windows 上工作区仍是 CRLF（编辑体验正常），但提交进仓库的永远是 LF。
+#
+# ★ 二进制文件必须标出来
+#   否则 Git 可能"聪明地"去转换它们的内容，直接损坏文件。
+#   PNG / keystore / IPA 都是二进制。
+
+# ---------------------------------------------------------------- 默认
+* text=auto eol=lf
+
+# ---------------------------------------------------------------- 明确按文本处理（统一 LF）
+*.java      text eol=lf
+*.swift     text eol=lf
+*.js        text eol=lf
+*.mjs       text eol=lf
+*.py        text eol=lf
+*.json      text eol=lf
+*.xml       text eol=lf
+*.plist     text eol=lf
+*.pbxproj   text eol=lf
+*.xcscheme  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.md        text eol=lf
+*.txt       text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.svg       text eol=lf
+*.webmanifest text eol=lf
+
+# ★ PowerShell 脚本是唯一例外：工作区保持 CRLF。
+#
+#   原因：本项目要在 Windows 上本地运行这些脚本（构建安卓、跑测试），
+#   而 Windows PowerShell 5.1 处理 LF 换行的 .ps1 有已知问题
+#   （而且之前还踩过"无 BOM 的 .ps1 被按 GBK 读取"的坑）。
+#   仓库里存 LF，检出到 Windows 转成 CRLF，两边都正常。
+#
+#   CI（macOS/Linux）不跑这些 .ps1，所以不存在冲突。
+*.ps1       text eol=crlf
+*.sh        text eol=lf
+
+# ---------------------------------------------------------------- 二进制（禁止任何转换）
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.ipa       binary
+*.apk       binary
+*.keystore  binary
+*.jks       binary
+*.p12       binary
+*.mobileprovision binary
+*.mp3       binary
+*.wav       binary
+
+# ---------------------------------------------------------------- Git 统计
+# 让 language stats 不把底图数据算成"代码"
+assets/basemap_*.txt  linguist-generated
+assets/spots_seed.json linguist-generated
+ios/XtLure/Core/*.swift linguist-generated

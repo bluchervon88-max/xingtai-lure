@@ -1,0 +1,207 @@
+{
+  "_说明": [
+    "跨平台一致性契约。Java 与 Swift 两套实现都必须满足这里的期望值。",
+    "",
+    "为什么要有这个文件：移植最大的风险不是某个算法写错，而是『两边各写一份期望值』——",
+    "改了 Java 忘了改 Swift，半年后两边算出不同结果，而两边测试都是绿的。",
+    "把期望值集中到这一份文件，任何一边偏离都会立刻被自己的测试抓到。",
+    "",
+    "约定：",
+    "  · range  [下限, 上限]  区间断言（含端点），用于有合理浮动范围的量",
+    "  · expect 数值          精确断言，配 tol 使用，|实际-期望| <= tol",
+    "  · 角度单位除特别注明外均为『度』，时间单位为小时（4.95 = 04:57）",
+    "  · 所有坐标一律 WGS-84，与 App 内部存储一致",
+    "",
+    "修改本文件后，必须同时跑：run-tests.ps1（Java 侧）与 swift-test.ps1（Swift 侧）。"
+  ],
+  "version": 1,
+
+  "coordinateTransform": [
+    {
+      "id": "xingtai_gcj02_offset",
+      "desc": "邢台市襄都区达活泉公园附近，WGS-84 转 GCJ-02 的偏移量应在合理区间",
+      "wgs84": [37.075, 114.49],
+      "offsetRange": [200, 900]
+    },
+    {
+      "id": "xingtai_gcj02_roundtrip",
+      "desc": "GCJ-02 转回 WGS-84 的往返误差必须很小（否则导航会偏）",
+      "wgs84": [37.075, 114.49],
+      "roundtripMaxMeters": 5.0
+    },
+    {
+      "id": "xingtai_bd09_roundtrip",
+      "desc": "BD-09（百度坐标系）往返误差",
+      "wgs84": [37.075, 114.49],
+      "roundtripMaxMeters": 5.0
+    },
+    {
+      "id": "tokyo_no_offset",
+      "desc": "境外坐标不做偏移（中国坐标加密算法只在国内生效）",
+      "wgs84": [35.6762, 139.6503],
+      "expectUnchanged": true
+    },
+    {
+      "id": "tiananmen_reference",
+      "desc": "天安门参考点交叉验证。公开资料：WGS-84(39.90750,116.39123) 对应 GCJ-02 约 (39.90869,116.39747)",
+      "wgs84": [39.9075, 116.39123],
+      "gcj02Expect": [39.90869, 116.39747],
+      "tol": 0.002
+    }
+  ],
+
+  "distance": [
+    {
+      "id": "same_lat_001_lon",
+      "desc": "同纬度下 0.01° 经度在北纬 37° 处的距离",
+      "from": [37.075, 114.49],
+      "to": [37.075, 114.5],
+      "range": [870, 905]
+    }
+  ],
+
+  "format": [
+    { "id": "fmt_886", "meters": 886, "expectStr": "886 m" },
+    { "id": "fmt_4321", "meters": 4321, "expectStr": "4.3 km" }
+  ],
+
+  "sunMoon": {
+    "_基准坐标": "邢台市襄都区 37.0750N 114.4900E，时区 Asia/Shanghai (UTC+8)",
+    "lat": 37.075,
+    "lon": 114.49,
+    "tzOffsetHours": 8,
+
+    "sunriseSunset": [
+      {
+        "id": "xingtai_summer_solstice",
+        "desc": "夏至。邢台实际约 04:59 / 19:44，这里用收紧后的窗口",
+        "date": "2026-06-21",
+        "sunriseRange": [4.95, 5.05],
+        "sunsetRange": [19.683, 19.783],
+        "dayLengthRange": [14.0, 15.5]
+      },
+      {
+        "id": "xingtai_winter_solstice",
+        "desc": "冬至。邢台实际约 07:28 / 17:11",
+        "date": "2026-12-21",
+        "sunriseRange": [7.417, 7.533],
+        "sunsetRange": [17.133, 17.25],
+        "dayLengthRange": [9.0, 10.0]
+      }
+    ],
+
+    "solarAltitude": [
+      {
+        "id": "summer_noon",
+        "desc": "夏至正午高度角 = 90 - 37.075 + 23.44 ≈ 76.4",
+        "date": "2026-06-21",
+        "hour": 12.0,
+        "expect": 76.4,
+        "tol": 1.5
+      },
+      {
+        "id": "summer_midnight",
+        "desc": "夏至午夜太阳应在地平线下",
+        "date": "2026-06-21",
+        "hour": 0.0,
+        "max": 0.0
+      },
+      {
+        "id": "winter_noon",
+        "desc": "冬至正午高度角 = 90 - 37.075 - 23.44 ≈ 29.5",
+        "date": "2026-12-21",
+        "hour": 12.0,
+        "expect": 29.5,
+        "tol": 1.5
+      }
+    ],
+
+    "solarAzimuth": [
+      {
+        "id": "summer_noon_south",
+        "desc": "正午前后应在正南附近",
+        "date": "2026-06-21",
+        "hour": 12.4,
+        "expect": 180.0,
+        "tol": 12.0
+      },
+      {
+        "id": "summer_morning_ne",
+        "desc": "06:00 应在东北方向",
+        "date": "2026-06-21",
+        "hour": 6.0,
+        "range": [55, 95]
+      },
+      {
+        "id": "summer_evening_nw",
+        "desc": "19:00 应在西北方向",
+        "date": "2026-06-21",
+        "hour": 19.0,
+        "range": [270, 305]
+      }
+    ],
+
+    "moonAge": [
+      {
+        "id": "full_moon_2026_01_03",
+        "desc": "2026-01-03 是满月",
+        "datetime": "2026-01-03T12:00:00",
+        "range": [12, 18]
+      },
+      {
+        "id": "new_moon_2026_01_19",
+        "desc": "2026-01-19 是新月（月龄接近 0 或接近 29.5）",
+        "datetime": "2026-01-19T12:00:00",
+        "eitherRange": [[0, 2.5], [27, 29.6]]
+      }
+    ],
+
+    "fishActivityScore": [
+      { "id": "new_moon_high", "desc": "新月鱼口评分应偏高", "moonAge": 0.5, "min": 80 },
+      { "id": "full_moon_high", "desc": "满月鱼口评分应偏高", "moonAge": 14.76, "min": 80 },
+      { "id": "quarter_low", "desc": "弦月鱼口评分应偏低", "moonAge": 7.4, "max": 55 }
+    ]
+  },
+
+  "mapProjection": {
+    "_说明": "地图投影契约。这里只放与设备无关的比例关系，具体像素尺寸由各平台按自己屏幕推导。",
+    "targetKmAt1x": 42.0,
+    "minZoom": 0.25,
+    "maxZoom": 32,
+    "aspectRatios": [
+      {
+        "id": "ratio_must_be_uniform",
+        "desc": "两个方向的地面米数/像素必须相同（否则地图横向拉伸变形）。这是曾经真实出过的 bug：横向被拉伸 1.256 倍 = 1/cos(37.2°)",
+        "centerLat": 37.225,
+        "zoom": 1.0,
+        "expectRatioEqualWithin": 1e-9
+      }
+    ]
+  },
+
+  "theme": {
+    "_说明": "两套配色的对比度下限。颜色值为 ARGB 十六进制。",
+    "dark": {
+      "bg": "#0E1116",
+      "card": "#171C24",
+      "text": "#E9EEF5",
+      "accent": "#2FB6A8",
+      "minTextOnCard": 4.5,
+      "minDimText": 3.0,
+      "minFaintText": 2.2,
+      "minAccentText": 3.0,
+      "minCardVsBg": 1.05
+    },
+    "light": {
+      "bg": "#F2F4F7",
+      "card": "#FFFFFF",
+      "text": "#14181D",
+      "accent": "#12897D",
+      "minTextOnCard": 4.5,
+      "minDimText": 3.0,
+      "minFaintText": 2.2,
+      "minAccentText": 3.0,
+      "minCardVsBg": 1.05
+    }
+  }
+}

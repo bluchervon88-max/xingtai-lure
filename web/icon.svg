@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0E1116"/>
+  <!-- 水滴：代表水系 -->
+  <path d="M256 96c0 0-104 118-104 190a104 104 0 0 0 208 0C360 214 256 96 256 96z"
+        fill="#2FB6A8" opacity="0.22"/>
+  <path d="M256 140c0 0-78 90-78 144a78 78 0 0 0 156 0C334 230 256 140 256 140z"
+        fill="#2FB6A8" opacity="0.42"/>
+  <!-- 鱼钩：代表路亚 -->
+  <path d="M292 176v128a50 50 0 0 1-100 0v-24"
+        fill="none" stroke="#E9EEF5" stroke-width="20" stroke-linecap="round"/>
+  <path d="M192 280l-22 26 30 16z" fill="#E9EEF5"/>
+  <!-- 钩眼 -->
+  <circle cx="292" cy="164" r="16" fill="none" stroke="#E9EEF5" stroke-width="16"/>
+</svg>

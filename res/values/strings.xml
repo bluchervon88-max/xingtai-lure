@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">邢台路亚</string>
+    <string name="tab_spots">钓点</string>
+    <string name="tab_catches">记录</string>
+    <string name="tab_me">我的</string>
+</resources>

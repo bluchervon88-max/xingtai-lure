@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  版本号以这里为唯一来源：build.ps1 会读这两个属性并传给 aapt2，
+  关于页也从 PackageManager 读取，不再在代码里重复写死。
+  改版本只改这两行：versionName 是给人看的，versionCode 必须递增（Android 用它判断升级）。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.xtlure.app"
+    android:versionCode="16"
+    android:versionName="3.2">
+
+    <!-- 定位权限：GPS 野外取点 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
+      注意：本 App 本身不需要网络权限。
+      钓点数据全部存在本机 SQLite，坐标为 GPS 原始值。
+      只有在你主动点击"导航"时才会唤起地图 App / 浏览器，联网由那些 App 负责。
+      这样在任何没信号的野外水库边，记录功能都完全可用。
+    -->
+
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
+    <!-- Android 11+ 需要声明才能查到地图 App 是否安装 -->
+    <queries>
+        <package android:name="com.autonavi.minimap" />
+        <package android:name="com.baidu.BaiduMap" />
+        <package android:name="com.tencent.map" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:fitsSystemWindows="true"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="false"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.SpotDetailActivity"
+            android:exported="false"
+            android:label="钓点详情"
+            android:parentActivityName=".ui.MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <activity
+            android:name=".ui.EditSpotActivity"
+            android:exported="false"
+            android:label="编辑钓点"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <activity
+            android:name=".ui.AboutActivity"
+            android:exported="false"
+            android:label="关于" />
+
+        <!--
+            钓点分布图（二级页面）。
+            从主页顶部的「分布图」入口进入，全屏显示、可缩放拖动。
+            独立成页是因为地图占高度大，放在主页会把列表挤成一条。
+        -->
+        <activity
+            android:name=".ui.MapActivity"
+            android:exported="false"
+            android:label="钓点分布图"
+            android:parentActivityName=".ui.MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+    </application>
+</manifest>

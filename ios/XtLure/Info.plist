@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    XtLure 的 Info.plist
+
+    ★ 这里有两个配置是为了解决一个很具体的问题：**开发者在 Windows 上，看不见 iPhone 界面**
+
+      我这边的处境：安卓可以用 adb 截图、dump 界面层级、模拟点击、读日志；
+      iOS 这些全都没有 —— 没有 Xcode、没有 Safari 远程调试、连设备都看不到。
+
+      所以 App 必须**自己把诊断信息写成文件，并且让用户能方便地取出来**。
+      靠的就是下面这两个键：
+
+        UIFileSharingEnabled              = true   「文件」App 里能看到本 App 的文档目录
+        LSSupportsOpeningDocumentsInPlace = true   允许原地打开这些文件
+
+      配好之后：手机 →「文件」App →「我的 iPhone」→ XtLure → 就能看到诊断文件，
+      可以直接发给开发者。不需要 iTunes、不需要数据线、不需要 Mac。
+
+      对应的代码在 Diagnostics.swift，它会把视图层级和实测尺寸写成文本。
+
+    ★ 顺带说明几个"为什么这样设"
+
+      UILaunchScreen（空字典）
+          不设的话，App 在 iPhone 上会被当成"不支持全屏"，
+          以 320×480 的小窗运行，四周包黑边 —— 症状很迷惑人。
+
+      UIRequiredDeviceCapabilities = arm64
+          iPhone 8 Plus 是 A11 芯片（arm64），没问题。
+
+      UISupportedInterfaceOrientations 只留竖屏
+          这是钓鱼记录工具，横屏没有意义，而且横屏下 16:9 的布局要另做一套。
+-->
+<plist version="1.0">
+<dict>
+
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh-Hans</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>邢台路亚</string>
+
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <!-- ============================================================ 诊断支持 -->
+    <!-- 让文档目录出现在「文件」App 里，这样诊断数据能直接导出（见文件头说明） -->
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
+
+    <!-- ============================================================ 启动与外观 -->
+    <key>UILaunchScreen</key>
+    <dict>
+        <key>UIColorName</key>
+        <string></string>
+    </dict>
+
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>arm64</string>
+    </array>
+
+    <!-- 只支持竖屏：钓鱼记录工具，横屏没有使用场景 -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+
+    <key>UIUserInterfaceStyle</key>
+    <string>Dark</string>
+
+    <key>UIViewControllerBasedStatusBarAppearance</key>
+    <true/>
+
+    <!-- ============================================================ 定位 -->
+    <!--
+        只申请「使用期间」权限，且不在后台定位。
+        与安卓版一致：App 不联网（没有 ATS 例外、没有任何网络请求代码），
+        定位只用于"算离我最近的钓点"和记录当时站的位置。
+    -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>用于计算你和钓点的距离、记录作钓时的位置。所有数据只存在这台手机里，不会上传。</string>
+
+    <!-- ============================================================ 其他 -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+
+</dict>
+</plist>

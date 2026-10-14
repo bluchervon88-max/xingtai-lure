@@ -1,0 +1,20 @@
+{
+  "name": "存储实测 · 邢台路亚",
+  "short_name": "存储实测",
+  "description": "验证 iOS 添加到主屏幕的网页应用，长期不用后本地数据是否会丢失",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0E1116",
+  "theme_color": "#0E1116",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自适应图标的背景层：纯深色。
+
+    前景是位图（res/mipmap-*/ic_launcher_foreground.png，取自 dsh-whale-widget 的
+    DSniang1.png，已按安全区缩放居中）。这里用 #0E1116 与 App 深色主题一致，
+    也让蓝色的小鲸鱼在启动器上更跳。
+
+    注意：背景层不要求落在安全区内（被裁掉也无所谓），所以是满幅的。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
