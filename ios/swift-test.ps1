@@ -37,10 +37,20 @@ if (-not (Get-Command swiftc -ErrorAction SilentlyContinue)) {
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 # ---------------------------------------------------------------- 编译
+#
+# ★ 这个列表必须与 Xcode 工程编译的文件集**对应**。
+#   逻辑层 6 个文件是 XtLureCore 的全部内容（见 ios/sync-sources.js 的 FILES）。
+#   如果这里漏了某个文件，它会「在 App 里能编译、在契约测试里没被验证」——
+#   反过来漏了更糟：测试是绿的，但那个模块根本没参与测试。
 $sources = @(
     (Join-Path $Rel 'Sources\XtLureCore\CoordinateTransform.swift'),
     (Join-Path $Rel 'Sources\XtLureCore\SunMoon.swift'),
+    (Join-Path $Rel 'Sources\XtLureCore\GeoViewport.swift'),
+    (Join-Path $Rel 'Sources\XtLureCore\FishingSpot.swift'),
+    (Join-Path $Rel 'Sources\XtLureCore\CatchRecord.swift'),
+    (Join-Path $Rel 'Sources\XtLureCore\Exporter.swift'),
     (Join-Path $Rel 'Sources\VectorTest\Vec.swift'),
+    (Join-Path $Rel 'Sources\VectorTest\ContractExtra.swift'),
     (Join-Path $Rel 'Sources\VectorTest\main.swift')
 )
 
@@ -59,10 +69,33 @@ Write-Host '  编译中…' -ForegroundColor DarkGray
 # Swift 规定：多文件编译时只有 main.swift 允许写顶层语句，
 # 所以入口必须是这个文件名（第一次写成 VectorTest.swift 就报了
 # 'statements are not allowed at the top level'）。
-& swiftc -O @sources -o $exe 2>&1 | ForEach-Object { "    $_" }
+#
+# ★ 编译这一段必须临时关掉 $ErrorActionPreference='Stop'。
+#
+#   swiftc 在 Windows 上会把链接器的正常信息写到 **stderr**
+#   （"正在创建库 xxx.lib 和对象 xxx.exp"）。脚本开头设了 Stop，
+#   PowerShell 就把这些当作终止错误，**编译之后的运行步骤再也不会执行** ——
+#   表现为脚本输出到"编译中…"就结束，没有任何报错也没有测试结果，
+#   极难判断是编译失败还是脚本提前退出。
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+$compileOut = & swiftc -O @sources -o $exe 2>&1
+$compileCode = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
 
-if (-not (Test-Path $exe)) {
-    Write-Host '  编译失败' -ForegroundColor Red
+# 只显示真正的错误行。链接器的常规信息不显示 —— 100 多行噪音会把
+# 真正的 error 淹没，之前就吃过这个亏。
+$realErrors = $compileOut | Where-Object { $_ -match 'error:|warning:' }
+if ($realErrors) {
+    $realErrors | Select-Object -First 20 | ForEach-Object { "    $_" }
+}
+
+if ($compileCode -ne 0 -or -not (Test-Path $exe)) {
+    Write-Host "  编译失败（swiftc 退出码 $compileCode）" -ForegroundColor Red
+    if (-not $realErrors) {
+        Write-Host "  swiftc 没有报告 error 行，完整输出如下：" -ForegroundColor Yellow
+        $compileOut | Select-Object -First 30 | ForEach-Object { "    $_" }
+    }
     exit 1
 }
 Write-Host '  编译通过' -ForegroundColor Green

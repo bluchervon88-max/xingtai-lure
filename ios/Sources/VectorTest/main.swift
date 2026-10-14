@@ -201,6 +201,14 @@ if let theme = Vec.section(root, "theme") {
     }
 }
 
+// ---------------------------------------------------------------- 补充契约
+//
+// 这两部分原来漏了：地图投影契约（mapProjection 段）和模型序列化往返。
+// 详见 ContractExtra.swift 的说明 —— 一句话：契约只测一半等于没测，
+// 两边不一致时不会报警。
+runMapProjectionContract(root, r)
+runModelRoundTrip(r)
+
 print("\n================================")
 print("PASS=\(r.pass)  FAIL=\(r.fail)")
 if r.fail > 0 {

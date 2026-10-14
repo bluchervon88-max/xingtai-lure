@@ -27,10 +27,25 @@ package com.xtlure.app.ui;
  * ★ 单位约定（写错会让结论完全失真，本文件内统一）
  *   所有 pxPerXxxDeg() 都是「每 **度**」的像素数，不是每 0.01°。
  */
-final class GeoViewport {
+// ★ 从包私有改为 public，只为了一个目的：让**跨语言契约测试**能访问。
+//
+//   背景：testdata/vectors.json 里有 mapProjection 一段，Java 和 Swift
+//   两侧都要按同一份期望值校验。但 Java 侧的 VectorTest 在默认包（没有 package
+//   声明），访问不到 com.xtlure.app.ui 里包私有的类。
+//
+//   之前的状态更糟：契约里写了 mapProjection，但**两侧都没测**——
+//   期望值全是摆设，一边算错了另一边不会知道。Swift 侧补上测试后才暴露出来。
+//
+//   为什么选择改可见性而不是把测试塞进 ui 包：
+//     塞进 ui 包会让 tools/ 下的测试文件与产品代码同包，看起来像内部实现，
+//     也破坏了 "tools 下的都是独立可跑的验证程序" 这个一致约定。
+//     而这个类的职责本来就是"地图投影的纯计算"，公开它是合理的。
+//
+//   只开放契约测试真正用到的成员，没有无差别全公开。
+public final class GeoViewport {
 
     /** 每度纬度的米数 */
-    static final double METERS_PER_DEG_LAT = 111320.0;
+    public static final double METERS_PER_DEG_LAT = 111320.0;
 
     /** 视口宽度（像素） */
     final float width;
@@ -44,11 +59,11 @@ final class GeoViewport {
     final double centerLon;
 
     /** 1× 时东西方向的可见宽度（km） */
-    static final double TARGET_KM_AT_1X = 42.0;
-    static final float MIN_ZOOM = 0.25f;
-    static final float MAX_ZOOM = 32f;
+    public static final double TARGET_KM_AT_1X = 42.0;
+    public static final float MIN_ZOOM = 0.25f;
+    public static final float MAX_ZOOM = 32f;
 
-    GeoViewport(float width, float height, float zoom,
+    public GeoViewport(float width, float height, float zoom,
                 double centerLat, double centerLon) {
         this.width = Math.max(1f, width);
         this.height = Math.max(1f, height);
@@ -66,7 +81,7 @@ final class GeoViewport {
     }
 
     /** 中心纬度处的经度收缩系数 */
-    double cosLat() {
+    public double cosLat() {
         return Math.cos(Math.toRadians(centerLat));
     }
 
@@ -79,18 +94,18 @@ final class GeoViewport {
      *   再由 pxPerLatDeg = pxPerLonDeg / cosLat 得到
      * 合起来：pxPerLatDeg = width / (目标经度跨度 × cosLat)
      */
-    float pxPerLatDeg() {
+    public float pxPerLatDeg() {
         double targetLonDeg = TARGET_KM_AT_1X / (111.32 * cosLat());
         return (float) (width / (targetLonDeg * cosLat()) * zoom);
     }
 
     /** 每度经度对应的像素数（含 cos 修正，保证形状不变形） */
-    float pxPerLonDeg() {
+    public float pxPerLonDeg() {
         return (float) (pxPerLatDeg() * cosLat());
     }
 
     /** 每像素对应多少米（两个方向相同，这是"不变形"的直接体现） */
-    double metersPerPixel() {
+    public double metersPerPixel() {
         return METERS_PER_DEG_LAT / pxPerLatDeg();
     }
 
@@ -113,12 +128,12 @@ final class GeoViewport {
     }
 
     /** 可见的纬度跨度（度） */
-    double visibleLatSpan() {
+    public double visibleLatSpan() {
         return height / pxPerLatDeg();
     }
 
     /** 可见的经度跨度（度） */
-    double visibleLonSpan() {
+    public double visibleLonSpan() {
         return width / pxPerLonDeg();
     }
 
@@ -188,7 +203,7 @@ final class GeoViewport {
     }
 
     /** 生成一个以给定经纬范围为中心、1× 缩放的视野 */
-    static GeoViewport centeredOn(float width, float height,
+    public static GeoViewport centeredOn(float width, float height,
                                  double minLat, double minLon,
                                  double maxLat, double maxLon) {
         return new GeoViewport(width, height, 1f,

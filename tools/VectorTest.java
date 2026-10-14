@@ -246,6 +246,15 @@ public class VectorTest {
             }
         }
 
+        // ---------------------------------------------------------------- 补充契约
+        //
+        // 地图投影部分原来**两侧都没测**（契约文件里写着期望值却无人校验）。
+        // 详见 VectorTestMap.java 的说明。
+        // 与 Swift 侧的 ios/Sources/VectorTest/ContractExtra.swift 对应。
+        VectorTestMap.Result mapResult = VectorTestMap.run(v);
+        pass += mapResult.pass;
+        fail += mapResult.fail;
+
         System.out.println("\n================================");
         System.out.println("PASS=" + pass + "  FAIL=" + fail);
         if (fail > 0) {

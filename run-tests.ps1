@@ -68,7 +68,8 @@ if (Test-Path $outV) { Remove-Item $outV -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $outV | Out-Null
 
 & $JavacExe -encoding UTF-8 -nowarn -d $outV -sourcepath $Src `
-    (Join-Path $Tools 'VectorReader.java') (Join-Path $Tools 'VectorTest.java')
+    (Join-Path $Tools 'VectorReader.java') (Join-Path $Tools 'VectorTest.java') `
+    (Join-Path $Tools 'VectorTestMap.java')
 if ($LASTEXITCODE -ne 0) { Fail 'VectorTest 编译' }
 
 & $JavaExe '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' -cp "$outV;$Plat" VectorTest
