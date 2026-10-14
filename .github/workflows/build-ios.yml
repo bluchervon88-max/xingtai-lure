@@ -170,6 +170,9 @@ jobs:
             exit 1
           fi
           echo "使用模拟器: $DEVICE"
+          # 输出过滤：只看测试结果与我们自己打印的诊断内容，避免刷屏。
+          # 两个标记（────...────）是测试里 print 出来的界面文字清单，
+          # 那是 CI 日志里唯一能看到"模拟器上界面长什么样"的东西，必须留下。
           xcodebuild test \
             -project ios/XtLure.xcodeproj \
             -scheme XtLure \
@@ -178,7 +181,72 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            | tail -150
+            2>&1 | tee "$RUNNER_TEMP/test.log" \
+            | grep -E 'Test Case|Test Suite|error:|warning: .*XtLure|────|^  \[[0-9]+\]|Executed [0-9]+ test|TEST (SUCCEEDED|FAILED)|\*\* TEST' \
+            || true
+          # grep 会吞掉 xcodebuild 的退出码，所以从日志里重新判定
+          if grep -q '\*\* TEST FAILED \*\*' "$RUNNER_TEMP/test.log"; then
+            echo "::error::模拟器测试失败"
+            exit 1
+          fi
+          if ! grep -q '\*\* TEST SUCCEEDED \*\*' "$RUNNER_TEMP/test.log"; then
+            echo "::error::没有看到 TEST SUCCEEDED —— 测试可能没跑起来"
+            tail -80 "$RUNNER_TEMP/test.log"
+            exit 1
+          fi
+          echo "模拟器测试通过"
+
+      # ================================================================ 核验诊断文件真的写出来了
+      #
+      # ★ 为什么单独一步，而且放在测试**之后**
+      #
+      #   这个测试**不读文件** —— 在 UI 测试进程里读 App 的文件试过两条路都不通：
+      #     · FileManager.default 拿到的是测试进程自己的目录（独立沙箱），
+      #       于是报"文件没写出来"，看起来像 App 的问题，实际是读错了地方
+      #     · XCUIApplication.containerURL 在 Xcode 16.4 里不存在
+      #
+      #   改成从**宿主机侧**用 simctl 读 —— 这反而更接近真实场景：
+      #   用户在真机上也是从"外面"（「文件」App）把文件拿出来的。
+      #
+      #   这一步验证的是整条 iOS 路线的**关键前提**：
+      #   诊断模块能把界面信息变成开发者拿得到的文件。
+      #   如果它坏了，开发者就彻底失去了观测手段 —— 而那时连哪里错了都无从下手。
+      - name: 核验诊断文件
+        run: |
+          # 不用 `set -e` —— 那会让 `|| true` 失效（`set -e` 下
+          # 命令失败会直接退出，绕过后面的 `||`）。这里全部显式判错。
+          echo "App 数据容器:"
+          CONTAINER=$(xcrun simctl get_app_container booted com.xtlure.app data 2>/dev/null || echo "")
+          if [ -z "$CONTAINER" ]; then
+            echo "::error::拿不到 App 数据容器 —— App 可能根本没装上"
+            xcrun simctl listapps booted | grep -i xtlure || true
+            exit 1
+          fi
+          echo "  $CONTAINER"
+
+          DUMP="$CONTAINER/Documents/layout-dump.txt"
+          echo ""
+          echo "Documents 目录内容:"
+          ls -la "$CONTAINER/Documents" || true
+
+          if [ ! -f "$DUMP" ]; then
+            echo "::error::诊断文件没有被写出来: $DUMP"
+            echo "这是整条 iOS 路线的关键前提失败 —— 用户在真机上也拿不到界面信息。"
+            if [ -f "$CONTAINER/Documents/crash.log" ]; then
+              echo ""
+              echo "crash.log 内容:"
+              cat "$CONTAINER/Documents/crash.log"
+            fi
+            exit 1
+          fi
+
+          echo ""
+          echo "======== layout-dump.txt 全文 ========"
+          cat "$DUMP"
+          echo "======== 报告结束 ========"
+          echo ""
+          echo "报告大小: $(wc -c < "$DUMP") 字节"
+          echo "✅ 诊断文件确实被写出来了 —— 用户在真机上也能拿到它"
 
       - name: 构建归档（不签名）
         run: |
