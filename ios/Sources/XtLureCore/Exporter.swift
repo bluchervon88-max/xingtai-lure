@@ -1,4 +1,10 @@
 import Foundation
+#if canImport(WinSDK) && os(Windows)
+// 只为读系统时区（见 systemTimeZone）。iOS 上这个模块不存在，走 #else 分支，
+// 所以"只依赖 Foundation"的约束在目标平台（iOS）依然成立；
+// Windows 上 WinSDK 是系统自带的 SDK 模块，不是第三方依赖。
+import WinSDK
+#endif
 
 /// 导出：备份 JSON、GeoJSON、人可读 Markdown。
 ///
@@ -21,16 +27,24 @@ import Foundation
 ///   1. `System.currentTimeMillis()` → `Date().timeIntervalSince1970 * 1000`，
 ///      都是"Unix epoch 毫秒"；本文件统一走 `nowMillis()`。
 ///   2. `SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)` 用的是**系统默认时区**，
-///      Swift 这边显式写 `TimeZone.current`，行为一致。
+///      Swift 这边用 `Exporter.systemTimeZone()`，行为一致。
 ///      Locale 用 `en_US_POSIX` 而不是 `zh_CN`：格式里全是数字，POSIX 能保证在任何
 ///      系统区域设置下都输出 ASCII 数字（阿拉伯语/泰语数字系统的机器上 `zh_CN` 也可能漂）。
+///
+///      ★★ 为什么不能直接用 `TimeZone.current`：**Windows 上的 Swift Foundation
+///      （corelibs-foundation）取不到系统时区** —— 实测 `TimeZone.current` /
+///      `NSTimeZone.system` / `NSTimeZone.local` / `Calendar.current.timeZone`
+///      全部返回 "GMT"，而同一台机器的 Java 返回 "Asia/Shanghai"。
+///      后果是导出的 `timeText` 会比安卓少 8 小时（第一次逐字节对照就是这样暴露的）。
+///      解决办法见 `systemTimeZone()`：Windows 上读注册表的 `TimeZoneKeyName`，
+///      再映射成 IANA 名；拿不到就退回 `TimeZone.current`（至少不崩）。
+///      这段代码在 iOS 上走 `#else` 分支，行为与安卓完全一致。
 ///   3. `String.format(Locale.CHINA, "%.5f, %.5f", ...)` 与
 ///      `String(format:locale:)` 同为 printf 语义（HALF_UP），输出一致。
 ///   4. `num()` 里 Java 用正则 `replaceAll("0+$","").replaceAll("\\.$","")` 去尾随零。
-///      这里改用 `Foundation` 的 `trimmingCharacters(in:)`，去掉的是**首尾**的 '0' 和 '.'，
-///      而 Java 的两条正则合起来也正好等价于"去掉尾部的 0 与末尾的点"，
-///      且 `String(format: "%.6f", ...)` 的结果不会有前导零被误删（`0.500000` → `0.5`，
-///      首字符 '0' 不会被 trim 掉，因为后面还有非零字符）。此点已用边界值实测对齐。
+///      此处逐字复刻成 `trimTrailingZerosAndDot`，**没有**用 `trimmingCharacters(in:)`：
+///      后者会同时去掉首字符，`0.500000` 会变成 `.5`（不是合法 JSON 数字）。
+///      实际数据里第一次就踩到了（`0.500000` 是常见小数），见该函数的注释。
 ///   5. `StringBuilder` → `String` 累加。数据量是几十到几百条，性能无差异。
 ///      早期 iOS 上 `String` 拼接是 O(n²)，现在 Swift 的标准库实现已不复存在这个问题。
 ///   6. Java 逐 **UTF-16 码元**转义，Swift 逐 **Unicode 标量**。对 BMP 内字符（含所有
@@ -253,10 +267,19 @@ public enum Exporter {
                 sb += "- 作钓状态：\(FishingSpot.statusName(s.status))\n"
                 if s.hasCoord {
                     let g = CoordinateTransform.wgs84ToGcj02(s.lat, s.lon)
-                    // Java: String.format(Locale.CHINA, "...%n")，%n 是平台换行符，
-                    // Android 上就是 \n，这里显式写 \n
+                    // Java 写的是 `String.format(Locale.CHINA, "…%n", …)`，`%n` = 平台换行符。
+                    // ★ 这里显式写 "\n"（不是 "\r\n"）：Android 运行时的
+                    //   `System.lineSeparator()` 是 OpenJDK 实现 + Unix 行分隔符，固定返回 "\n"
+                    //   （AOSP libcore 的 luni/ojluni System.java），`Formatter` 的 `%n`
+                    //   走的就是它。若改成 "\r\n"，安卓导出的 markdown 在 iOS 上就会多出回车，
+                    //   逐字节 diff 会全行不等。
+                    //   注意：在 **Windows 上跑同一份 Java 代码**（例如本工程的自检脚本）时
+                    //   `%n` 会变成 "\r\n"，那是 JVM 的平台行为，不是安卓的行为。
+                    // ★ 不要写成 `String(format:locale:)`：**带 locale 的重载会做本地化分组**，
+                    //   1e15 会被打成 "1,000,000,000,000,000.00000"（实测），而 Java 的
+                    //   `String.format(Locale.CHINA, "%.5f", …)` 不带分组分隔符。
+                    //   不带 locale 的 `String(format:)` 走 C 的 printf 语义，与 Java 一致。
                     sb += String(format: "- 坐标：WGS84 %.5f, %.5f ／ GCJ02 %.5f, %.5f\n",
-                                 locale: Locale(identifier: "zh_CN"),
                                  s.lat, s.lon, g.lat, g.lon)
                 } else {
                     sb += "- 坐标：未记录\n"
@@ -369,9 +392,117 @@ public enum Exporter {
         let date = Date(timeIntervalSince1970: Double(ms) / 1000.0)
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone.current
+        f.timeZone = Exporter.systemTimeZone()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return f.string(from: date)
+    }
+
+    // MARK: - 系统时区（Windows 上必须自己查）
+
+    /// 系统默认时区。
+    ///
+    /// ★ 为什么需要这个：**Windows 上的 Swift Foundation 拿不到系统时区。**
+    ///   实测（本机 Windows 时区 = China Standard Time）：
+    ///     - `TimeZone.current` → "GMT"，`secondsFromGMT()` = 0
+    ///     - `NSTimeZone.system` / `NSTimeZone.local` / `NSTimeZone.default` → 全是 "GMT"
+    ///     - `Calendar.current.timeZone` → "GMT"
+    ///   而同一台机器上的 Java `TimeZone.getDefault()` 是 "Asia/Shanghai"。
+    ///   直接用它会让导出的 `timeText` 比安卓少 8 小时 —— 这是逐字节对照时
+    ///   唯一一处真实差异（其余字段全部一致）。
+    ///
+    /// ★ 办法：Windows 上从注册表 `HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation`
+    ///   的 `TimeZoneKeyName`（值形如 "China Standard Time"）读系统时区名，再用
+    ///   `TimeZone(identifier:)` 换算成带夏令时规则的 IANA 时区。
+    ///   注意 Windows 的时区名**不能**直接喂给 `TimeZone(identifier:)`（实测返回 nil，
+    ///   它只认 IANA 名），所以中间需要一张映射表，见 `ianaIdentifier(forWindowsZone:)`。
+    ///
+    /// ★ 取不到时的兜底顺序：注册表 → `TimeZone.current`（iOS 上就是正确的）。
+    ///   宁可退回 GMT 也不要崩：导出时间戳错 8 小时，总好过整个导出功能挂掉。
+    ///
+    /// ★ iOS 上走 `#else` 分支直接返回 `TimeZone.current`，与 `SimpleDateFormat` 语义相同。
+    public static func systemTimeZone() -> TimeZone {
+        #if canImport(WinSDK) && os(Windows)
+        if let key = windowsTimeZoneKeyName(), let tz = ianaIdentifier(forWindowsZone: key) {
+            return tz
+        }
+        #endif
+        return TimeZone.current
+    }
+
+    #if canImport(WinSDK) && os(Windows)
+    /// 读注册表里的系统时区名（例如 "China Standard Time"）。
+    ///
+    /// 用 `RegGetValueW` 而不是 `RegOpenKeyExW` + `RegQueryValueExW`：
+    /// 后者在 Swift 的 WinSDK 绑定下，无论缓冲区开多大都返回 `ERROR_MORE_DATA`(234)
+    /// （实测 256/1024/4096/16384 个 wchar 全一样，缓冲区其实根本没被填），
+    /// `RegGetValueW` 一次就返回 `ERROR_SUCCESS` 和正确的字节数，省掉一轮排查。
+    private static func windowsTimeZoneKeyName() -> String? {
+        let subKey = "SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation"
+        let valueName = "TimeZoneKeyName"
+        var cap = 256
+        for _ in 0..<4 {
+            var buf = [UInt16](repeating: 0, count: cap)
+            var size = DWORD(cap * MemoryLayout<UInt16>.size)
+            var type = DWORD(0)
+            let rc = subKey.withCString(encodedAs: UTF16.self) { sub in
+                valueName.withCString(encodedAs: UTF16.self) { name in
+                    buf.withUnsafeMutableBytes { raw in
+                        RegGetValueW(HKEY_LOCAL_MACHINE, sub, name, DWORD(RRF_RT_REG_SZ),
+                                     &type, raw.baseAddress, &size)
+                    }
+                }
+            }
+            if rc == ERROR_SUCCESS {
+                // size 是**字节数**（含结尾的 NUL），换算成 wchar 个数再截断
+                let limit = min(Int(size) / MemoryLayout<UInt16>.size, buf.count)
+                let end = buf[0..<limit].firstIndex(of: 0) ?? limit
+                return String(decoding: buf[0..<end], as: UTF16.self)
+            }
+            if rc != ERROR_INSUFFICIENT_BUFFER { return nil }
+            cap = max(cap * 4, Int(size) / MemoryLayout<UInt16>.size + 1)
+        }
+        return nil
+    }
+    #endif
+
+    /// Windows 时区名 → IANA 时区。
+    ///
+    /// 只列了常见项，**重点是 "China Standard Time"**（本工程用户的绝大多数，
+    /// 与 `TimeZone(identifier: "Asia/Shanghai")` 等价，含 1986 年以来的中国夏令时历史规则）。
+    /// 查不到的表项返回 nil，调用方退回 `TimeZone.current`。
+    /// 完整映射表有两三百条（Windows 自己的 CLDR 数据），真要全量支持应当引入数据文件，
+    /// 而不是把表塞进代码 —— 这里按"够用 + 明确失效"取舍。
+    private static func ianaIdentifier(forWindowsZone key: String) -> TimeZone? {
+        let table: [String: String] = [
+            // 中国及周边（本项目的主要场景）
+            "China Standard Time": "Asia/Shanghai",
+            "Taipei Standard Time": "Asia/Taipei",
+            "Hong Kong Standard Time": "Asia/Hong_Kong",
+            "Singapore Standard Time": "Asia/Singapore",
+            "Tokyo Standard Time": "Asia/Tokyo",
+            "Korea Standard Time": "Asia/Seoul",
+            "Ulaanbaatar Standard Time": "Asia/Ulaanbaatar",
+            "Myanmar Standard Time": "Asia/Yangon",
+            "SE Asia Standard Time": "Asia/Bangkok",
+            "North Asia East Standard Time": "Asia/Irkutsk",
+            "Vladivostok Standard Time": "Asia/Vladivostok",
+            // 其他常见项
+            "UTC": "UTC",
+            "GMT Standard Time": "Europe/London",
+            "W. Europe Standard Time": "Europe/Berlin",
+            "Central Europe Standard Time": "Europe/Budapest",
+            "Romance Standard Time": "Europe/Paris",
+            "Moscow Standard Time": "Europe/Moscow",
+            "Eastern Standard Time": "America/New_York",
+            "Central Standard Time": "America/Chicago",
+            "Mountain Standard Time": "America/Denver",
+            "Pacific Standard Time": "America/Los_Angeles",
+            "AUS Eastern Standard Time": "Australia/Sydney",
+            "India Standard Time": "Asia/Kolkata",
+            "Arabian Standard Time": "Asia/Dubai",
+        ]
+        guard let iana = table[key] else { return nil }
+        return TimeZone(identifier: iana)
     }
 
     /// 数字转 JSON 字面量。
@@ -388,15 +519,41 @@ public enum Exporter {
     /// `0.500000` 会变成 `.5`）。这里逐字复刻 Java 的两条正则：
     /// `replaceAll("0+$","")` 再 `replaceAll("\\.$","")`。
     ///
-    /// ⚠ 已知差异：当 |d| ≥ 1e21（或 ≤ -1e21）时 C 的 `%f` 会退化成科学计数法
-    /// （`1e+20`），而 Java 的 `String.format` 仍输出定点数。只有把经纬度写成天文数字
-    /// 才会触发；那种数据本身就是脏数据（地图上根本画不出来），故不做定点化补偿。
+    /// ⚠ 科学计数法：|d| ≥ 1e21 时 C 的 `%f` 会退化成 `1e+20` 这种写法，而 Java 的
+    /// `String.format` 始终输出定点数。实测 1e20 时 Java 给 `100000000000000000000`、
+    /// Swift 给 `1e+20` —— 这种数据本身是脏数据（经纬度不可能这么大），
+    /// 但"格式一致"是这份文件的硬契约，所以这里显式补一个定点兜底，见 `fixed6`。
     public static func num(_ d: Double) -> String {
         if d.rounded(.toNearestOrEven) == d && abs(d) < 1e15 {
             return String(Int64(d))
         }
-        let s = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), d)
+        // ★ 不带 locale：带 locale 的重载会加千位分隔符（实测 1e15 → "1,000,000,000,000,000.000000"），
+        //   那不是合法 JSON 数字。C 的 printf 语义正是 Java 的 String.format(Locale.US, ...) 的行为。
+        let s = String(format: "%.6f", d)
+        if s.contains("e") || s.contains("E") {
+            return fixed6(d)
+        }
         return trimTrailingZerosAndDot(s)
+    }
+
+    /// `%.6f` 的定点版，只在 `%f` 退化成科学计数法（|d| ≥ 1e21）时兜底。
+    ///
+    /// 做法：整数部分用 `%.0f` 单独格式化（C 的 `%f` 在小数位为 0 时不进指数形式），
+    /// 小数部分由 `%.6f` 结果裁掉 `"0."` 前缀得到 —— `%.6f` 一定是"整数部分.6位小数"
+    /// 的形状，所以 `dropFirst(2)` 拿到的就是那 6 位小数。
+    private static func fixed6(_ d: Double) -> String {
+        let posix = Locale(identifier: "en_US_POSIX")
+        let absStr = String(format: "%.6f", locale: posix, abs(d))
+        guard let dot = absStr.firstIndex(of: ".") else {
+            return (d < 0 ? "-" : "") + absStr
+        }
+        let intPart = String(absStr[absStr.startIndex..<dot])
+        var frac = String(absStr[absStr.index(after: dot)...])
+        while frac.hasSuffix("0") {
+            frac.removeLast()
+        }
+        let body = frac.isEmpty ? intPart : intPart + "." + frac
+        return (d < 0 ? "-" : "") + body
     }
 
     /// 逐字复刻 Java 的 `replaceAll("0+$","").replaceAll("\\.$","")`
@@ -431,9 +588,8 @@ public enum Exporter {
             default:
                 if scalar.value < 0x20 {
                     // Java: String.format(Locale.US, "\\u%04x", (int) c)
-                    sb += String(format: "\\u%04x",
-                                 locale: Locale(identifier: "en_US_POSIX"),
-                                 Int(scalar.value))
+                    // 同样不带 locale：`\u001f` 这种输出不能被本地化成别的数字形状
+                    sb += String(format: "\\u%04x", Int(scalar.value))
                 } else {
                     sb.unicodeScalars.append(scalar)
                 }

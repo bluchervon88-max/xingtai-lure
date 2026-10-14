@@ -222,9 +222,9 @@ public struct GeoViewport {
 
     /// 视野摘要，界面上用于把"比例对不对"变成可读数字
     public func describe() -> String {
-        // 与 Java 的 String.format(Locale.CHINA, ...) 一致：printf 语义 + 四位小数两位
-        return String(format: "%.2f~%.2f°N %.2f~%.2f°E",
-                      locale: Locale(identifier: "zh_CN"),
-                      minLat, maxLat, minLon, maxLon)
+        // 与 Java 的 String.format(Locale.CHINA, ...) 一致：printf 语义、两位小数。
+        // ★ 不要写成 `String(format:locale:)` —— 带 locale 的重载会加千位分隔符
+        //   （经度跨度大到几千度时会出现 "1,234.57"），而 Java 的 %.2f 不加。
+        return String(format: "%.2f~%.2f°N %.2f~%.2f°E", minLat, maxLat, minLon, maxLon)
     }
 }
