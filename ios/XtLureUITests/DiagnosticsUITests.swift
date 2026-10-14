@@ -26,17 +26,36 @@ import XCTest
 /// ## 为什么不用 `simctl` 从外面看
 ///
 /// 试过这条路：`xcrun simctl get_app_container ... data` 能拿到 App 的数据目录。
-/// 但它要额外的 `xcodebuild build` + `simctl install` + `simctl launch` 三步，
-/// 而且路径与设备名耦合。UI 测试的进程本身就在 App 容器里，
-/// 直接读文件更简单、更稳。
+/// ## 关于读取 App 写出的文件
+///
+/// UI 测试跑在**独立进程、独立沙箱**里，不是 App 的一部分。
+/// 所以读诊断文件必须用 `XCUIApplication.containerURL` 拿到**被测 App** 的容器，
+/// 不能用 `FileManager.default` —— 那会读到测试进程自己的目录。
+///
+/// 第一版就是踩了这个坑：测试报"诊断文件没有被写出来"、
+/// 打印出的 Documents 内容是「（空）」，看起来像 App 没写文件，
+/// 实际上文件写了、只是读错了地方。**这类失败会把人引向完全错误的方向。**
 final class DiagnosticsUITests: XCTestCase {
 
     /// 被测 App。目标名与 scheme 里的 BlueprintName 一致。
     private var app: XCUIApplication!
 
-    /// App 的 Documents 目录（UI 测试进程与 App 共享同一个数据容器）
+    /// App 的 Documents 目录。
+    ///
+    /// ★ 必须用 `app.containerURL`，**不能**用
+    ///   `FileManager.default.urls(for: .documentDirectory, ...)`。
+    ///
+    ///   UI 测试跑在**独立进程、独立沙箱**里，它不是 App 的一部分。
+    ///   所以 `FileManager.default` 拿到的是**测试进程自己**的 Documents 目录，
+    ///   而 App 写文件写的是 App 自己的目录 —— 两者是两个不同的路径。
+    ///
+    ///   实测踩到：第一版用了 FileManager.default，测试报
+    ///   "诊断文件没有被写出来"，并打印出 Documents 内容为「（空）」——
+    ///   看起来像 App 没写文件，实际上文件写了、只是读错了地方。
+    ///
+    ///   `XCUIApplication.containerURL` 是 XCTest 专门为此提供的接口。
     private var documentsDir: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        app.containerURL.appendingPathComponent("Documents")
     }
 
     private var dumpURL: URL {
