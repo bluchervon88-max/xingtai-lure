@@ -52,6 +52,8 @@
 		BB0000000000000000000010 /* basemap_water.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000010 /* basemap_water.txt */; };
 		BB0000000000000000000011 /* basemap_river.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000011 /* basemap_river.txt */; };
 		BB0000000000000000000012 /* basemap_boundary.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000012 /* basemap_boundary.txt */; };
+		BB0000000000000000000013 /* SystemTimeZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000013 /* SystemTimeZone.swift */; };
+		BB0000000000000000000014 /* ViewTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000014 /* ViewTree.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -73,6 +75,8 @@
 		AA0000000000000000000010 /* basemap_water.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = basemap_water.txt; sourceTree = "<group>"; };
 		AA0000000000000000000011 /* basemap_river.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = basemap_river.txt; sourceTree = "<group>"; };
 		AA0000000000000000000012 /* basemap_boundary.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = basemap_boundary.txt; sourceTree = "<group>"; };
+		AA0000000000000000000013 /* SystemTimeZone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTimeZone.swift; sourceTree = "<group>"; };
+		AA0000000000000000000014 /* ViewTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewTree.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -102,6 +106,8 @@
 		CC0000000000000000000003 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				AA0000000000000000000014 /* ViewTree.swift */,
+				AA0000000000000000000013 /* SystemTimeZone.swift */,
 				AA000000000000000000000F /* Basemap.swift */,
 				AA0000000000000000000005 /* CoordinateTransform.swift */,
 				AA0000000000000000000006 /* SunMoon.swift */,
@@ -214,6 +220,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB0000000000000000000014 /* ViewTree.swift in Sources */,
+				BB0000000000000000000013 /* SystemTimeZone.swift in Sources */,
 				BB000000000000000000000F /* Basemap.swift in Sources */,
 				BB0000000000000000000001 /* AppDelegate.swift in Sources */,
 				BB0000000000000000000002 /* SceneDelegate.swift in Sources */,

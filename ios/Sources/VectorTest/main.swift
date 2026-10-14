@@ -221,6 +221,7 @@ if let vectorsURL = Vec.findVectorsFile() {
 }
 
 runModelRoundTrip(r)
+runTimeZoneAndDiagnostics(root, r)
 
 print("\n================================")
 print("PASS=\(r.pass)  FAIL=\(r.fail)")

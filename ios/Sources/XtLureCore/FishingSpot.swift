@@ -462,19 +462,19 @@ public struct FishingSpot: Codable, Equatable, Hashable, Identifiable, Sendable 
     /// 按**系统时区**取日历。
     ///
     /// ★ 为什么不是 `Calendar.current`：Windows 上的 Swift Foundation 拿不到系统时区，
-    ///   `Calendar.current.timeZone` 是 GMT（详见 `Exporter.systemTimeZone()` 的注释）。
+    ///   `Calendar.current.timeZone` 是 GMT（详见 `SystemTimeZone` 的说明）。
     ///   用了它，中国用户 5 月 16 日凌晨 0:00–8:00 这 8 小时会被算成 5 月 15 日 ——
-    ///   禁渔期判定与"距禁渔期还有几天"就会差一天。
+    ///   禁渔期判定与"距禁渔期还有几天"就会差一天。**这是合规问题，不是显示问题。**
     ///
-    /// ★ iOS 上 `Exporter.systemTimeZone()` 直接返回 `TimeZone.current`，与 Java 的
-    ///   `Calendar.getInstance()` 语义完全一致。
+    /// ★ iOS 上 `SystemTimeZone.current` 就是 `TimeZone.current`（系统时区正常），
+    ///   与 Java 的 `Calendar.getInstance()` 语义一致。
     ///
-    /// ★ 分层上的妥协：模型层调了导出层的一个静态方法，只为拿时区。
-    ///   若以后要拆干净，应当把它提到一个独立的 `SystemTimeZone` 工具类型里，
-    ///   让 `Exporter` 与 `FishingSpot` 都依赖它。
+    /// ★ 分层：原来这里调的是 `Exporter.systemTimeZone()`，属于**反向依赖**
+    ///   （模型层依赖导出层，只为拿一个时区）。现在两者都依赖 `SystemTimeZone`，
+    ///   层次不再倒置。
     private static var systemCalendar: Calendar {
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = Exporter.systemTimeZone()
+        cal.timeZone = SystemTimeZone.current
         return cal
     }
 

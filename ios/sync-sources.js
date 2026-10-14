@@ -44,6 +44,8 @@ const FILES = [
   'CatchRecord.swift',
   'Exporter.swift',
   'Basemap.swift',
+  'SystemTimeZone.swift',
+  'ViewTree.swift',
 ];
 
 const BANNER_PREFIX = '// ★ 本文件是生成物，请勿直接修改。';

@@ -1,10 +1,10 @@
 import Foundation
-#if canImport(WinSDK) && os(Windows)
-// 只为读系统时区（见 systemTimeZone）。iOS 上这个模块不存在，走 #else 分支，
-// 所以"只依赖 Foundation"的约束在目标平台（iOS）依然成立；
-// Windows 上 WinSDK 是系统自带的 SDK 模块，不是第三方依赖。
-import WinSDK
-#endif
+// ★ 这里**没有** import WinSDK。
+//
+//   曾经为了在 Windows 上读系统时区而引入它（Foundation 在 Windows 上
+//   `TimeZone.current` 返回 GMT，见 SystemTimeZone.swift 的说明）。
+//   后来改用调用系统自带的 `tzutil.exe`，就不再需要任何平台专属模块了 ——
+//   核心层因此维持"只依赖 Foundation"，这正是它能在 Linux CI 上编译测试的前提。
 
 /// 导出：备份 JSON、GeoJSON、人可读 Markdown。
 ///
@@ -410,99 +410,22 @@ public enum Exporter {
     ///   直接用它会让导出的 `timeText` 比安卓少 8 小时 —— 这是逐字节对照时
     ///   唯一一处真实差异（其余字段全部一致）。
     ///
-    /// ★ 办法：Windows 上从注册表 `HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation`
-    ///   的 `TimeZoneKeyName`（值形如 "China Standard Time"）读系统时区名，再用
-    ///   `TimeZone(identifier:)` 换算成带夏令时规则的 IANA 时区。
-    ///   注意 Windows 的时区名**不能**直接喂给 `TimeZone(identifier:)`（实测返回 nil，
-    ///   它只认 IANA 名），所以中间需要一张映射表，见 `ianaIdentifier(forWindowsZone:)`。
+    /// ★ 办法：**已挪到 `SystemTimeZone.swift`**，本方法只是转发。
     ///
-    /// ★ 取不到时的兜底顺序：注册表 → `TimeZone.current`（iOS 上就是正确的）。
+    ///   为什么不在这个文件里实现：**模型层也要用系统时区**
+    ///   （`FishingSpot` 的禁渔期判定、`SunMoon` 的日期换算），
+    ///   让它们去依赖导出层是反向依赖。提到独立类型后谁需要谁引用，层次不会倒置。
+    ///   而且读时区那些平台细节不该混在导出逻辑里。
+    ///
+    ///   实现方式也换过一版：最初用 `import WinSDK` 读注册表，
+    ///   现在改成调用系统自带的 `tzutil.exe` —— 少一个平台专属模块，
+    ///   核心层维持"只依赖 Foundation"，这也正是它能在 Linux CI 上编译测试的前提。
+    ///
+    /// ★ 取不到时的兜底是 `TimeZone.current`（iOS 上本来就是对的）。
     ///   宁可退回 GMT 也不要崩：导出时间戳错 8 小时，总好过整个导出功能挂掉。
-    ///
-    /// ★ iOS 上走 `#else` 分支直接返回 `TimeZone.current`，与 `SimpleDateFormat` 语义相同。
+    ///   诊断报告里会写出实际识别到的时区，识别错了能一眼看见。
     public static func systemTimeZone() -> TimeZone {
-        #if canImport(WinSDK) && os(Windows)
-        if let key = windowsTimeZoneKeyName(), let tz = ianaIdentifier(forWindowsZone: key) {
-            return tz
-        }
-        #endif
-        return TimeZone.current
-    }
-
-    #if canImport(WinSDK) && os(Windows)
-    /// 读注册表里的系统时区名（例如 "China Standard Time"）。
-    ///
-    /// 用 `RegGetValueW` 而不是 `RegOpenKeyExW` + `RegQueryValueExW`：
-    /// 后者在 Swift 的 WinSDK 绑定下，无论缓冲区开多大都返回 `ERROR_MORE_DATA`(234)
-    /// （实测 256/1024/4096/16384 个 wchar 全一样，缓冲区其实根本没被填），
-    /// `RegGetValueW` 一次就返回 `ERROR_SUCCESS` 和正确的字节数，省掉一轮排查。
-    private static func windowsTimeZoneKeyName() -> String? {
-        let subKey = "SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation"
-        let valueName = "TimeZoneKeyName"
-        var cap = 256
-        for _ in 0..<4 {
-            var buf = [UInt16](repeating: 0, count: cap)
-            var size = DWORD(cap * MemoryLayout<UInt16>.size)
-            var type = DWORD(0)
-            let rc = subKey.withCString(encodedAs: UTF16.self) { sub in
-                valueName.withCString(encodedAs: UTF16.self) { name in
-                    buf.withUnsafeMutableBytes { raw in
-                        RegGetValueW(HKEY_LOCAL_MACHINE, sub, name, DWORD(RRF_RT_REG_SZ),
-                                     &type, raw.baseAddress, &size)
-                    }
-                }
-            }
-            if rc == ERROR_SUCCESS {
-                // size 是**字节数**（含结尾的 NUL），换算成 wchar 个数再截断
-                let limit = min(Int(size) / MemoryLayout<UInt16>.size, buf.count)
-                let end = buf[0..<limit].firstIndex(of: 0) ?? limit
-                return String(decoding: buf[0..<end], as: UTF16.self)
-            }
-            if rc != ERROR_INSUFFICIENT_BUFFER { return nil }
-            cap = max(cap * 4, Int(size) / MemoryLayout<UInt16>.size + 1)
-        }
-        return nil
-    }
-    #endif
-
-    /// Windows 时区名 → IANA 时区。
-    ///
-    /// 只列了常见项，**重点是 "China Standard Time"**（本工程用户的绝大多数，
-    /// 与 `TimeZone(identifier: "Asia/Shanghai")` 等价，含 1986 年以来的中国夏令时历史规则）。
-    /// 查不到的表项返回 nil，调用方退回 `TimeZone.current`。
-    /// 完整映射表有两三百条（Windows 自己的 CLDR 数据），真要全量支持应当引入数据文件，
-    /// 而不是把表塞进代码 —— 这里按"够用 + 明确失效"取舍。
-    private static func ianaIdentifier(forWindowsZone key: String) -> TimeZone? {
-        let table: [String: String] = [
-            // 中国及周边（本项目的主要场景）
-            "China Standard Time": "Asia/Shanghai",
-            "Taipei Standard Time": "Asia/Taipei",
-            "Hong Kong Standard Time": "Asia/Hong_Kong",
-            "Singapore Standard Time": "Asia/Singapore",
-            "Tokyo Standard Time": "Asia/Tokyo",
-            "Korea Standard Time": "Asia/Seoul",
-            "Ulaanbaatar Standard Time": "Asia/Ulaanbaatar",
-            "Myanmar Standard Time": "Asia/Yangon",
-            "SE Asia Standard Time": "Asia/Bangkok",
-            "North Asia East Standard Time": "Asia/Irkutsk",
-            "Vladivostok Standard Time": "Asia/Vladivostok",
-            // 其他常见项
-            "UTC": "UTC",
-            "GMT Standard Time": "Europe/London",
-            "W. Europe Standard Time": "Europe/Berlin",
-            "Central Europe Standard Time": "Europe/Budapest",
-            "Romance Standard Time": "Europe/Paris",
-            "Moscow Standard Time": "Europe/Moscow",
-            "Eastern Standard Time": "America/New_York",
-            "Central Standard Time": "America/Chicago",
-            "Mountain Standard Time": "America/Denver",
-            "Pacific Standard Time": "America/Los_Angeles",
-            "AUS Eastern Standard Time": "Australia/Sydney",
-            "India Standard Time": "Asia/Kolkata",
-            "Arabian Standard Time": "Asia/Dubai",
-        ]
-        guard let iana = table[key] else { return nil }
-        return TimeZone(identifier: iana)
+        return SystemTimeZone.current
     }
 
     /// 数字转 JSON 字面量。

@@ -304,9 +304,16 @@ public enum SunMoon {
     // MARK: - 工具
 
     /// 一年中的第几天
+    ///
+    /// ★ 时区必须走 `SystemTimeZone.current`，**不能用 `Calendar.current`**。
+    ///
+    ///   Windows 上的 Swift Foundation 取不到系统时区（返回 GMT，见 `SystemTimeZone`），
+    ///   而中国是 UTC+8。用 GMT 的日历把「2026-03-01」这样的年月日转成时刻时，
+    ///   会落到实际的 2026-03-01 08:00（北京时间），在凌晨/深夜档位上
+    ///   算出来的"第几天"会差一天 —— 进而让日出日落算错整天。
     public static func dayOfYear(_ year: Int, _ month: Int, _ day: Int) -> Int {
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone.current
+        cal.timeZone = SystemTimeZone.current
         var c = DateComponents()
         c.year = year
         c.month = month

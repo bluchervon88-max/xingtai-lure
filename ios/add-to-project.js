@@ -65,6 +65,12 @@ const ENTRIES = [
   { id: '0000000000000000000012', name: 'basemap_boundary.txt',
     group: 'Resources', groupId: 'CC0000000000000000000004',
     phase: 'resource', type: 'text' },
+  { id: '0000000000000000000013', name: 'SystemTimeZone.swift',
+    group: 'Core', groupId: 'CC0000000000000000000003',
+    phase: 'compile', type: 'sourcecode.swift' },
+  { id: '0000000000000000000014', name: 'ViewTree.swift',
+    group: 'Core', groupId: 'CC0000000000000000000003',
+    phase: 'compile', type: 'sourcecode.swift' },
 ];
 
 /** build phase 的 ID 与显示名 */

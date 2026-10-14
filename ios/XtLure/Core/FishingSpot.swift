@@ -45,6 +45,8 @@ import Foundation
 ///   3. `daysUntilClosedSeason` 的日期语义与 Java 逐字对齐（含跨年 +1 年、向上取整），
 ///      但 Java 用 `Calendar.clone()` + `add(YEAR, 1)`，Swift 用 `Calendar.date(byAdding:)`。
 ///      两者都是"同一挂钟时刻 + 1 自然年"，闰日附近行为一致。
+///   4. 日历一律走 `systemCalendar`（= 系统时区的公历），**不用** `Calendar.current`：
+///      Windows 上后者是 GMT，会让禁渔期判定差一天。详见该属性的注释。
 public struct FishingSpot: Codable, Equatable, Hashable, Identifiable, Sendable {
 
     // MARK: - 水域类型
@@ -318,7 +320,9 @@ public struct FishingSpot: Codable, Equatable, Hashable, Identifiable, Sendable 
             return "无坐标"
         }
         // Java: String.format(Locale.CHINA, "%.5f, %.5f", lat, lon)
-        return String(format: "%.5f, %.5f", locale: Locale(identifier: "zh_CN"), lat, lon)
+        // ★ 不带 locale：`String(format:locale:)` 会做本地化分组，大数会被打成
+        //   "1,000,000.00000"，而 Java 的 %.5f 不加分组分隔符。
+        return String(format: "%.5f, %.5f", lat, lon)
     }
 
     // MARK: - 展示辅助
@@ -431,7 +435,7 @@ public struct FishingSpot: Codable, Equatable, Hashable, Identifiable, Sendable 
     /// 永远不会返回 -1。这里照抄实现而不是注释 —— 界面按注释改会得到错误的天数。
     /// （已把这个 Javadoc 与实现不符的问题写进移植报告。）
     public static func daysUntilClosedSeason(_ date: Date = Date()) -> Int {
-        let calendar = Calendar.current
+        let calendar = FishingSpot.systemCalendar
         let md = monthDay(date)
         let start = closedMonthFrom * 100 + closedDayFrom
         let end = closedMonthTo * 100 + closedDayTo
@@ -459,8 +463,27 @@ public struct FishingSpot: Codable, Equatable, Hashable, Identifiable, Sendable 
 
     /// `month * 100 + day`，Java 版到处用这个整数比较月日
     private static func monthDay(_ date: Date) -> Int {
-        let c = Calendar.current.dateComponents([.month, .day], from: date)
+        let c = FishingSpot.systemCalendar.dateComponents([.month, .day], from: date)
         return (c.month ?? 1) * 100 + (c.day ?? 1)
+    }
+
+    /// 按**系统时区**取日历。
+    ///
+    /// ★ 为什么不是 `Calendar.current`：Windows 上的 Swift Foundation 拿不到系统时区，
+    ///   `Calendar.current.timeZone` 是 GMT（详见 `SystemTimeZone` 的说明）。
+    ///   用了它，中国用户 5 月 16 日凌晨 0:00–8:00 这 8 小时会被算成 5 月 15 日 ——
+    ///   禁渔期判定与"距禁渔期还有几天"就会差一天。**这是合规问题，不是显示问题。**
+    ///
+    /// ★ iOS 上 `SystemTimeZone.current` 就是 `TimeZone.current`（系统时区正常），
+    ///   与 Java 的 `Calendar.getInstance()` 语义一致。
+    ///
+    /// ★ 分层：原来这里调的是 `Exporter.systemTimeZone()`，属于**反向依赖**
+    ///   （模型层依赖导出层，只为拿一个时区）。现在两者都依赖 `SystemTimeZone`，
+    ///   层次不再倒置。
+    private static var systemCalendar: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = SystemTimeZone.current
+        return cal
     }
 
     // MARK: - 调试
