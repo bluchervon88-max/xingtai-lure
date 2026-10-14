@@ -122,6 +122,53 @@ const extra = fs.existsSync(DST_DIR)
   ? fs.readdirSync(DST_DIR).filter((f) => f.endsWith('.swift') && !FILES.includes(f))
   : [];
 
+/**
+ * 检查 `ios/swift-test.ps1` 的编译列表与 FILES 是否一致。
+ *
+ * ★ 为什么需要这个检查
+ *
+ *   同一个"有哪些逻辑层文件"的事实被写在**两个地方**：
+ *     · 本文件的 FILES        —— 决定同步哪些文件到 Xcode 工程
+ *     · swift-test.ps1 的 $sources —— 决定契约测试编译哪些文件
+ *
+ *   两份清单手工维护，一定会漂移。实测踩过：新增 Basemap.swift 后
+ *   只更新了 FILES，忘了 swift-test.ps1，
+ *   于是契约测试报 `cannot find 'Basemap' in scope` ——
+ *   错误信息指向测试文件，而真正的原因是清单漏了一项。
+ *
+ *   漂移的两种后果都不好：
+ *     · 测试清单少了文件 -> 该模块**根本没被测到**，但测试仍然是绿的（更隐蔽）
+ *     · 测试清单多了文件 -> 编译报错（容易被发现，反倒安全）
+ *
+ *   这里在同步时顺手比对一下，两种漂移都能提前发现。
+ */
+function checkTestScriptList() {
+    const p = path.join(IOS, 'swift-test.ps1');
+    if (!fs.existsSync(p)) {
+        return { ok: false, note: '找不到 ios/swift-test.ps1' };
+    }
+    const text = fs.readFileSync(p, 'utf8');
+    const missing = [];
+    const wrongPath = [];
+    for (const name of FILES) {
+        // 该文件必须在 $sources 里以 XtLureCore 的路径出现
+        const want = 'Sources\\XtLureCore\\' + name;
+        if (!text.includes(want)) {
+            missing.push(name);
+        }
+    }
+    // 反向：$sources 里有没有引用已经不存在的 XtLureCore 文件
+    const listed = [...text.matchAll(/Sources\\XtLureCore\\([\w.]+\.swift)/g)]
+        .map((m) => m[1]);
+    for (const l of listed) {
+        if (!FILES.includes(l)) {
+            wrongPath.push(l);
+        }
+    }
+    return { ok: missing.length === 0 && wrongPath.length === 0,
+             missing, wrongPath };
+}
+
 console.log('');
 if (missing.length) {
   console.log('  缺少源文件: ' + missing.join(', '));
@@ -132,8 +179,30 @@ if (extra.length) {
   console.log('  （源里已没有，但副本还在 —— 会被 Xcode 一起编译，需要删除）');
 }
 
+// swift-test.ps1 的清单一致性
+const ts = checkTestScriptList();
+if (ts.ok) {
+  console.log('  swift-test.ps1 的编译清单与同步清单一致 ✅');
+} else {
+  console.log('');
+  console.log('  ⚠ ios/swift-test.ps1 的编译清单与同步清单不一致：');
+  if (ts.missing && ts.missing.length) {
+    console.log('     少了: ' + ts.missing.join(', '));
+    console.log('     -> 这些模块**根本没被契约测试覆盖**，但测试仍然是绿的');
+  }
+  if (ts.wrongPath && ts.wrongPath.length) {
+    console.log('     多了: ' + ts.wrongPath.join(', '));
+    console.log('     -> 这些文件已不在 XtLureCore 里，编译会报找不到');
+  }
+  if (ts.note) {
+    console.log('     ' + ts.note);
+  }
+}
+
+const testListOk = ts.ok;
+
 if (checkOnly) {
-  if (stale.length || missing.length || extra.length) {
+  if (stale.length || missing.length || extra.length || !testListOk) {
     console.log('  需要同步的文件: ' + (stale.join(', ') || '无'));
     console.log('  → 运行 node ios/sync-sources.js 后提交');
     process.exit(1);
@@ -145,4 +214,4 @@ if (checkOnly) {
 console.log('  同步完成: ' + copied + ' 个文件更新，' + (FILES.length - copied - missing.length) + ' 个已是最新');
 console.log('  源目录: ' + path.relative(path.join(IOS, '..'), SRC_DIR));
 console.log('  目标:   ' + path.relative(path.join(IOS, '..'), DST_DIR));
-process.exit(missing.length || extra.length ? 1 : 0);
+process.exit(missing.length || extra.length || !testListOk ? 1 : 0);
