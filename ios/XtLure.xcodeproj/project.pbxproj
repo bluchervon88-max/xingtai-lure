@@ -48,6 +48,10 @@
 		BB000000000000000000000A /* Exporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000A /* Exporter.swift */; };
 		BB000000000000000000000B /* spots_seed.json in Resources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000B /* spots_seed.json */; };
 		BB000000000000000000000C /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000E /* Palette.swift */; };
+		BB000000000000000000000F /* Basemap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000F /* Basemap.swift */; };
+		BB0000000000000000000010 /* basemap_water.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000010 /* basemap_water.txt */; };
+		BB0000000000000000000011 /* basemap_river.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000011 /* basemap_river.txt */; };
+		BB0000000000000000000012 /* basemap_boundary.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000012 /* basemap_boundary.txt */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -65,6 +69,10 @@
 		AA000000000000000000000C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA000000000000000000000D /* XtLure.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XtLure.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000000000000000000000E /* Palette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Palette.swift; sourceTree = "<group>"; };
+		AA000000000000000000000F /* Basemap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Basemap.swift; sourceTree = "<group>"; };
+		AA0000000000000000000010 /* basemap_water.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = basemap_water.txt; sourceTree = "<group>"; };
+		AA0000000000000000000011 /* basemap_river.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = basemap_river.txt; sourceTree = "<group>"; };
+		AA0000000000000000000012 /* basemap_boundary.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = basemap_boundary.txt; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -94,6 +102,7 @@
 		CC0000000000000000000003 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				AA000000000000000000000F /* Basemap.swift */,
 				AA0000000000000000000005 /* CoordinateTransform.swift */,
 				AA0000000000000000000006 /* SunMoon.swift */,
 				AA0000000000000000000007 /* GeoViewport.swift */,
@@ -107,6 +116,9 @@
 		CC0000000000000000000004 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				AA0000000000000000000012 /* basemap_boundary.txt */,
+				AA0000000000000000000011 /* basemap_river.txt */,
+				AA0000000000000000000010 /* basemap_water.txt */,
 				AA000000000000000000000B /* spots_seed.json */,
 			);
 			path = Resources;
@@ -188,6 +200,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB0000000000000000000012 /* basemap_boundary.txt in Resources */,
+				BB0000000000000000000011 /* basemap_river.txt in Resources */,
+				BB0000000000000000000010 /* basemap_water.txt in Resources */,
 				BB000000000000000000000B /* spots_seed.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -199,6 +214,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB000000000000000000000F /* Basemap.swift in Sources */,
 				BB0000000000000000000001 /* AppDelegate.swift in Sources */,
 				BB0000000000000000000002 /* SceneDelegate.swift in Sources */,
 				BB0000000000000000000003 /* MainViewController.swift in Sources */,

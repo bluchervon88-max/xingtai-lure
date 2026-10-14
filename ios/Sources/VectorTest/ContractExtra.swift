@@ -232,6 +232,128 @@ func runClosedSeasonContract(_ root: [String: Any], _ r: Runner) {
 ///   所以这里固定用 Asia/Shanghai（项目基准时区，与 Java 侧
 ///   `TimeZone.setDefault(Asia/Shanghai)` 一致），
 ///   并且把时刻设成当天**正午**，远离任何时区边界。
+/// 离线矢量底图的解码契约（Swift 侧）。
+///
+/// ★ 期望值来自哪里，为什么重要
+///
+///   `vectors.json` 里 basemap 段的期望值是用 **Python 独立算出来的**
+///   （`tools/compute-basemap-truth.py`），不是从任何一方的实现里读出来的。
+///
+///   如果拿 Java 的结果当期望值，"测试通过"只证明 Swift 与 Java 一致，
+///   **不证明两者都解对了** —— 两边完全可能用同样的方式理解错格式。
+///   三个实现互相印证，比两个互相印证强得多。
+///
+/// ★ 为什么不能只比几何数和顶点数
+///
+///   计数对但坐标错位是完全可能的：差值累加时起点写错、经纬度顺序写反、
+///   符号映射差 1 —— 这些都不会改变顶点总数。
+///   所以契约里还锁了第一个几何的**前 4 个顶点坐标**，逐点比对。
+///
+/// 与 Java 侧对应：`tools/VectorTestMap.java` 的 `runBasemap`。**改一边必须改另一边。**
+///
+/// - Parameter baseDir: 工程根目录（basemap_*.txt 在 assets/ 下）
+func runBasemapContract(_ root: [String: Any], _ r: Runner, baseDir: URL) {
+    print("\n=== 契约: basemap ===")
+
+    guard let bm = Vec.section(root, "basemap") else {
+        r.check("basemap 段存在", false, "契约文件里找不到这一段")
+        return
+    }
+
+    // iOS 上数据在 App 包里，测试时直接读工程的 assets/ 目录 ——
+    // 两处是同一份文件，所以测的就是产品数据。
+    let assets = baseDir.appendingPathComponent("assets")
+    let waterURL = assets.appendingPathComponent("basemap_water.txt")
+    let riverURL = assets.appendingPathComponent("basemap_river.txt")
+    let boundaryURL = assets.appendingPathComponent("basemap_boundary.txt")
+
+    for u in [waterURL, riverURL, boundaryURL]
+    where !FileManager.default.fileExists(atPath: u.path) {
+        r.check("底图数据文件存在", false, "找不到 \(u.path)")
+        return
+    }
+
+    var map = Basemap()
+    let msg = map.load(waterURL: waterURL, riverURL: riverURL, boundaryURL: boundaryURL)
+    guard map.loaded else {
+        r.check("底图载入", false, msg)
+        return
+    }
+    r.check("底图载入成功", true, msg)
+
+    // ---- 三个图层的几何数与顶点数
+    let layers: [(String, String, [Basemap.Shape], Bool)] = [
+        ("water", "水系", map.water, true),
+        ("river", "河道", map.river, false),
+        ("boundary", "区县界", map.boundary, true),
+    ]
+    for (key, label, shapes, expectClosed) in layers {
+        guard let want = Vec.section(bm, key) else { continue }
+
+        let wantShapes = Int(Vec.num(want, "shapes", -1))
+        r.check(label + " 几何数", shapes.count == wantShapes,
+                "\(shapes.count) 个  期望 \(wantShapes)")
+
+        var vsum = 0
+        for s in shapes { vsum += s.lats.count }
+        let wantV = Int(Vec.num(want, "vertices", -1))
+        r.check(label + " 顶点数", vsum == wantV, "\(vsum) 个  期望 \(wantV)")
+
+        // 闭合标志：河道是折线，其余是闭合面
+        let allMatch = shapes.allSatisfy { $0.closed == expectClosed }
+        r.check(label + " 闭合标志正确", allMatch,
+                expectClosed ? "全部应为闭合面" : "全部应为折线")
+    }
+
+    // ---- 总顶点数
+    let wantTotal = Int(Vec.num(bm, "totalVertices", -1))
+    r.check("顶点总数", map.vertexCount == wantTotal,
+            "\(map.vertexCount)  期望 \(wantTotal)")
+
+    // ---- 经纬度外接框
+    if let bounds = Vec.section(bm, "bounds") {
+        let tol = Vec.num(bounds, "tol", 0.0002)
+        let got = map.bounds()
+        let pairs: [(String, Double)] = [
+            ("minLat", got.minLat), ("minLon", got.minLon),
+            ("maxLat", got.maxLat), ("maxLon", got.maxLon),
+        ]
+        for (name, gotVal) in pairs {
+            let wantVal = Vec.num(bounds, name, Double.nan)
+            if wantVal.isNaN { continue }
+            r.check("外接框 " + name, abs(gotVal - wantVal) < tol,
+                    String(format: "%.4f  期望 %.4f ±%.4f", gotVal, wantVal, tol))
+        }
+    }
+
+    // ---- 逐点核对第一个水体几何
+    //
+    // 这一步才是真正能抓住"坐标错位"的检查。
+    if let sample = Vec.section(bm, "sample"), !map.water.isEmpty {
+        let s0 = map.water[0]
+        let wantN = Int(Vec.num(sample, "vertexCount", -1))
+        r.check("样本顶点数", s0.lats.count == wantN, "\(s0.lats.count)  期望 \(wantN)")
+
+        let wantName = Vec.str(sample, "name", "")
+        r.check("样本名称", s0.name == wantName, "'\(s0.name)'  期望 '\(wantName)'")
+
+        let stol = Vec.num(sample, "tol", 0.00002)
+        let wantVerts = Vec.ranges(sample, "vertices")
+        for i in 0..<min(wantVerts.count, s0.lats.count) {
+            let w = wantVerts[i]
+            let dLat = abs(Double(s0.lats[i]) - w.0)
+            let dLon = abs(Double(s0.lons[i]) - w.1)
+            r.check("样本顶点\(i)", dLat < stol && dLon < stol,
+                    String(format: "%.5f,%.5f  期望 %.5f,%.5f",
+                           Double(s0.lats[i]), Double(s0.lons[i]), w.0, w.1))
+        }
+
+        let wantClosed = Vec.bool(sample, "closed", true)
+        r.check("样本闭合标志", s0.closed == wantClosed,
+                "\(s0.closed)  期望 \(wantClosed)")
+    }
+}
+
 private func dateOf(_ ymd: String) -> Date? {
     let parts = Vec.parseDateTime(ymd)
     var comps = DateComponents()

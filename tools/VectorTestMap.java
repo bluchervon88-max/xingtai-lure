@@ -1,4 +1,5 @@
 import com.xtlure.app.model.FishingSpot;
+import com.xtlure.app.data.BasemapData;
 import com.xtlure.app.ui.GeoViewport;
 
 import java.util.Calendar;
@@ -273,5 +274,137 @@ final class VectorTestMap {
         c.clear();
         c.set(p[0], p[1] - 1, p[2]);
         return c;
+    }
+
+    /**
+     * 离线矢量底图的解码契约（Java 侧）。
+     *
+     * ★ 期望值来自哪里，为什么重要
+     *
+     *   `vectors.json` 里 basemap 段的期望值是用 **Python 独立算出来的**
+     *   （`tools/compute-basemap-truth.py`），不是从 Java 实现里读出来的。
+     *
+     *   如果拿 Java 的结果当期望值，"测试通过"只证明 Swift 与 Java 一致，
+     *   **不证明两者都解对了** —— 两边完全可能用同样的方式理解错格式。
+     *   三个实现互相印证，比两个互相印证强得多。
+     *
+     * ★ 为什么不能只比几何数和顶点数
+     *
+     *   计数对但坐标错位是完全可能的：差值累加时起点写错、
+     *   经纬度顺序写反、符号映射差 1 —— 这些都不会改变顶点总数。
+     *   所以契约里还锁了第一个几何的**前 4 个顶点坐标**，逐点比对。
+     *
+     * @param v   契约读取器
+     * @param dir 存放 basemap_*.txt 的目录（工程的 assets/）
+     */
+    static Result runBasemap(VectorReader v, java.io.File dir) {
+        Result r = new Result();
+        System.out.println("\n=== 契约: basemap ===");
+
+        Map<String, Object> bm = v.section("basemap");
+        if (bm == null) {
+            check(r, "basemap 段存在", false, "契约文件里找不到这一段");
+            return r;
+        }
+
+        // 载入**真实的产品代码**，不是测试专用的副本
+        BasemapData map = new BasemapData();
+        int vertices = map.loadFromDir(dir);
+        if (vertices < 0) {
+            check(r, "底图载入", false, "loadFromDir 失败，目录 " + dir);
+            return r;
+        }
+        check(r, "底图载入成功", true, vertices + " 个顶点，来自 " + dir.getName());
+
+        // ---- 三个图层的几何数与顶点数
+        String[][] layers = {{"water", "水系"}, {"river", "河道"}, {"boundary", "区县界"}};
+        for (String[] layer : layers) {
+            String key = layer[0];
+            Map<String, Object> want = VectorReader.child(bm, key);
+            if (want == null) {
+                continue;
+            }
+            java.util.List<BasemapData.Shape> got =
+                    key.equals("water") ? map.water()
+                            : key.equals("river") ? map.river() : map.boundary();
+
+            int wantShapes = (int) VectorReader.num(want, "shapes", -1);
+            check(r, layer[1] + " 几何数", got.size() == wantShapes,
+                    got.size() + " 个  期望 " + wantShapes);
+
+            int vsum = 0;
+            for (BasemapData.Shape s : got) {
+                vsum += s.lats.length;
+            }
+            int wantV = (int) VectorReader.num(want, "vertices", -1);
+            check(r, layer[1] + " 顶点数", vsum == wantV,
+                    vsum + " 个  期望 " + wantV);
+
+            // 闭合标志：河道是折线，其余是闭合面
+            boolean expectClosed = !key.equals("river");
+            boolean allMatch = true;
+            for (BasemapData.Shape s : got) {
+                if (s.closed != expectClosed) {
+                    allMatch = false;
+                    break;
+                }
+            }
+            check(r, layer[1] + " 闭合标志正确", allMatch,
+                    expectClosed ? "全部应为闭合面" : "全部应为折线");
+        }
+
+        // ---- 总顶点数
+        int wantTotal = (int) VectorReader.num(bm, "totalVertices", -1);
+        check(r, "顶点总数", map.vertexCount() == wantTotal,
+                map.vertexCount() + "  期望 " + wantTotal);
+
+        // ---- 经纬度外接框
+        Map<String, Object> bounds = VectorReader.child(bm, "bounds");
+        if (bounds != null) {
+            double tol = VectorReader.num(bounds, "tol", 0.0002);
+            double[] got = map.bounds();   // {minLat, minLon, maxLat, maxLon}
+            String[] names = {"minLat", "minLon", "maxLat", "maxLon"};
+            for (int i = 0; i < 4; i++) {
+                double wantVal = VectorReader.num(bounds, names[i], Double.NaN);
+                if (Double.isNaN(wantVal)) {
+                    continue;
+                }
+                check(r, "外接框 " + names[i], Math.abs(got[i] - wantVal) < tol,
+                        String.format(Locale.CHINA, "%.4f  期望 %.4f ±%.4f",
+                                got[i], wantVal, tol));
+            }
+        }
+
+        // ---- 逐点核对第一个水体几何
+        //
+        // 这一步才是真正能抓住"坐标错位"的检查。
+        Map<String, Object> sample = VectorReader.child(bm, "sample");
+        if (sample != null && !map.water().isEmpty()) {
+            BasemapData.Shape s0 = map.water().get(0);
+            int wantN = (int) VectorReader.num(sample, "vertexCount", -1);
+            check(r, "样本顶点数", s0.lats.length == wantN,
+                    s0.lats.length + "  期望 " + wantN);
+
+            String wantName = VectorReader.str(sample, "name", "");
+            check(r, "样本名称", s0.name.equals(wantName),
+                    "'" + s0.name + "'  期望 '" + wantName + "'");
+
+            double stol = VectorReader.num(sample, "tol", 0.00002);
+            java.util.List<double[]> wantVerts = VectorReader.pairs(sample, "vertices");
+            for (int i = 0; i < wantVerts.size() && i < s0.lats.length; i++) {
+                double[] w = wantVerts.get(i);
+                double dLat = Math.abs(s0.lats[i] - w[0]);
+                double dLon = Math.abs(s0.lons[i] - w[1]);
+                check(r, "样本顶点" + i, dLat < stol && dLon < stol,
+                        String.format(Locale.CHINA, "%.5f,%.5f  期望 %.5f,%.5f",
+                                s0.lats[i], s0.lons[i], w[0], w[1]));
+            }
+
+            boolean wantClosed = VectorReader.bool(sample, "closed", true);
+            check(r, "样本闭合标志", s0.closed == wantClosed,
+                    s0.closed + "  期望 " + wantClosed);
+        }
+
+        return r;
     }
 }

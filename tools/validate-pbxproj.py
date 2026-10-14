@@ -363,6 +363,72 @@ def main():
             warnings.append("目标 %s 缺少 Release 配置（CI 用 Release 构建）"
                             % t.get("name"))
 
+    # ---- 8. ★ 漏登记检查：磁盘上的文件有没有被工程收录
+    #
+    # 这段是这套校验里**最有价值**的一条。
+    #
+    # 工程文件是手写的，加一个源文件要同时改四处：
+    #   PBXBuildFile / PBXFileReference / PBXGroup.children / Sources 阶段
+    # 漏掉任何一处都不会立刻报错：
+    #   · 漏了 Sources 阶段 -> Xcode 根本不编译它
+    #   -> 构建成功、产物正常，但那段代码没进去，**直到运行时才崩**，
+    #      而且崩溃位置看起来与漏掉的文件毫无关系
+    #   · 漏了 Resources 阶段 -> 资源没打进 App，运行时找不到文件
+    #
+    # 所以这里反过来查：磁盘上应该被收录的文件，工程里有没有？
+    #
+    # 判定"应该被收录"的规则（刻意保守，宁可漏报也不误报）：
+    #   · ios/XtLure/*.swift        在根目录的 Swift 文件 -> 必须编译
+    #   · ios/XtLure/Core/*.swift   逻辑层副本        -> 必须编译
+    #   · ios/XtLure/Resources/*    资源              -> 必须打包
+    # 子目录里未来若有故意不收录的文件，在下面的 IGNORE 里说明。
+    IGNORE = {
+        "Info.plist",            # 由 INFOPLIST_FILE 构建设置引用，不走 Resources 阶段
+    }
+
+    app_dir = os.path.join(PROJ_BASE, "XtLure")
+    compiled_paths = set()
+    for fr in compiled_refs:
+        p = resolve_path(fr)
+        if p:
+            compiled_paths.add(p)
+    resource_paths = set()
+    for oid, obj in objects.items():
+        if not isinstance(obj, dict) or obj.get("isa") != "PBXResourcesBuildPhase":
+            continue
+        for bf_id in obj.get("files", []):
+            fr = objects.get(bf_id, {}).get("fileRef")
+            p = resolve_path(fr) if fr else None
+            if p:
+                resource_paths.add(p)
+
+    unregistered = []
+    for rel_dir, must_be in [("", "compile"), ("Core", "compile"),
+                             ("Resources", "resource")]:
+        d = os.path.join(app_dir, rel_dir) if rel_dir else app_dir
+        if not os.path.isdir(d):
+            continue
+        for name in sorted(os.listdir(d)):
+            full = os.path.join(d, name)
+            if not os.path.isfile(full) or name in IGNORE:
+                continue
+            rel = ("XtLure/" + rel_dir + "/" + name) if rel_dir else ("XtLure/" + name)
+            rel = rel.replace("//", "/")
+            if must_be == "compile" and name.endswith(".swift"):
+                if rel not in compiled_paths:
+                    unregistered.append((rel, "没有被加入编译（Sources 阶段）"))
+            elif must_be == "resource":
+                if rel not in resource_paths:
+                    unregistered.append((rel, "没有被加入打包（Resources 阶段）"))
+
+    for rel, why in unregistered:
+        problems.append("文件存在但工程没收录：%s —— %s" % (rel, why))
+    if unregistered:
+        print("  ⚠ 漏登记 %d 个文件（这些文件不会被编译/打包，但不会报错）"
+              % len(unregistered))
+    else:
+        print("  漏登记检查：磁盘上的源文件与资源都已被工程收录 ✅")
+
     print("")
     for w in warnings:
         print("  [警告] " + w)

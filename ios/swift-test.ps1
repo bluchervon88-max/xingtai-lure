@@ -49,6 +49,7 @@ $sources = @(
     (Join-Path $Rel 'Sources\XtLureCore\FishingSpot.swift'),
     (Join-Path $Rel 'Sources\XtLureCore\CatchRecord.swift'),
     (Join-Path $Rel 'Sources\XtLureCore\Exporter.swift'),
+    (Join-Path $Rel 'Sources\XtLureCore\Basemap.swift'),
     (Join-Path $Rel 'Sources\VectorTest\Vec.swift'),
     (Join-Path $Rel 'Sources\VectorTest\ContractExtra.swift'),
     (Join-Path $Rel 'Sources\VectorTest\main.swift')

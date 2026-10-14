@@ -97,6 +97,48 @@ public final class VectorReader {
         return def;
     }
 
+    /**
+     * 取嵌套在给定对象里的子对象。
+     *
+     * 与 `section(key)` 的区别：那个从**顶层**取，这个从任意对象取。
+     * 例如 basemap.water / basemap.bounds / basemap.sample 都是顶层的
+     * basemap 下面的子对象。
+     */
+    public static Map<String, Object> child(Map<String, Object> v, String key) {
+        if (v == null) {
+            return null;
+        }
+        return Json.obj(v.get(key));
+    }
+
+    /**
+     * 取一个「二元数组的数组」，例如 basemap.sample.vertices = [[lat,lon], ...]。
+     *
+     * 用 double[] 而不是自定义类型：调用方几乎总是立刻拿两个数去比较，
+     * 包一层结构体只会让测试代码更长。
+     */
+    public static List<double[]> pairs(Map<String, Object> v, String key) {
+        List<double[]> out = new java.util.ArrayList<double[]>();
+        if (v == null) {
+            return out;
+        }
+        List<Object> raw = Json.arr(v.get(key));
+        if (raw == null) {
+            return out;
+        }
+        for (Object o : raw) {
+            List<Object> inner = Json.arr(o);
+            if (inner != null && inner.size() >= 2) {
+                Double a = toDouble(inner.get(0));
+                Double b = toDouble(inner.get(1));
+                if (a != null && b != null) {
+                    out.add(new double[]{a, b});
+                }
+            }
+        }
+        return out;
+    }
+
     /** 取一个对象数组，例如 coordinateTransform / distance */
     public List<Map<String, Object>> list(String key) {
         List<Object> raw = Json.arr(root.get(key));

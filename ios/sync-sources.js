@@ -43,6 +43,7 @@ const FILES = [
   'FishingSpot.swift',
   'CatchRecord.swift',
   'Exporter.swift',
+  'Basemap.swift',
 ];
 
 const BANNER_PREFIX = '// ★ 本文件是生成物，请勿直接修改。';

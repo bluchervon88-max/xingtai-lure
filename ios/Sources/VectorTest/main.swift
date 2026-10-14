@@ -208,6 +208,18 @@ if let theme = Vec.section(root, "theme") {
 // 两边不一致时不会报警。
 runMapProjectionContract(root, r)
 runClosedSeasonContract(root, r)
+
+// 底图契约要读 assets/ 下的真实数据文件。
+// 路径从契约文件的位置反推（Vec.load 是向上找到 testdata/vectors.json），
+// 这样不管从哪个目录启动测试都能找到，不依赖当前工作目录。
+if let vectorsURL = Vec.findVectorsFile() {
+    // testdata/vectors.json -> 上一级就是工程根目录
+    let baseDir = vectorsURL.deletingLastPathComponent().deletingLastPathComponent()
+    runBasemapContract(root, r, baseDir: baseDir)
+} else {
+    r.check("底图契约", false, "定位不到工程根目录")
+}
+
 runModelRoundTrip(r)
 
 print("\n================================")

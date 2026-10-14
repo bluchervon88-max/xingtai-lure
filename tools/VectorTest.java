@@ -261,6 +261,14 @@ public class VectorTest {
         pass += seasonResult.pass;
         fail += seasonResult.fail;
 
+        // 底图解码：期望值由 Python 独立算出（tools/compute-basemap-truth.py），
+        // 不是从 Java 实现读的 —— 否则只能证明 Swift 与 Java 一致，
+        // 证明不了两者都解对了。
+        VectorTestMap.Result mapData = VectorTestMap.runBasemap(v,
+                new java.io.File(System.getProperty("user.dir", "."), "assets"));
+        pass += mapData.pass;
+        fail += mapData.fail;
+
         System.out.println("\n================================");
         System.out.println("PASS=" + pass + "  FAIL=" + fail);
         if (fail > 0) {
